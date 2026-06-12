@@ -1,0 +1,36 @@
+<USER_REQUEST>
+[plugin:vite:vue] Element is missing end tag.
+
+C:/Users/patri/OneDrive/BaSIM v2.0/BaSIM_v1.0_source/frontend/src/views/DesignView.vue:652:21
+
+650|                    </thead>
+651|                    <tbody class="bg-white divide-y divide-gray-200">
+652|                      <template v-for="dur in selectedDurations" :key="'table-' + dur">
+   |                       ^
+653|                        <tr v-for="p in climateData.temporal_patterns.filter(p => p.duration_minutes === dur)" :key="p.metadata.event_id + '-' + p.aep_tier" class="hover:bg-gray-50">
+654|                          <td class="px-4 py-2 whitespace-nowrap font-medium text-gray-900">{{ p.aep_tier }}%</td>
+
+    at createCompilerError (C:\Users\patri\OneDrive\BaSIM v2.0\BaSIM_v1.0_source\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1364:17)
+    at emitError (C:\Users\patri\OneDrive\BaSIM v2.0\BaSIM_v1.0_source\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:2956:5)
+    at Object.onclosetag (C:\Users\patri\OneDrive\BaSIM v2.0\BaSIM_v1.0_source\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:2315:13)
+    at Tokenizer.stateInClosingTagName (C:\Users\patri\OneDrive\BaSIM v2.0\BaSIM_v1.0_source\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:785:16)
+    at Tokenizer.parse (C:\Users\patri\OneDrive\BaSIM v2.0\BaSIM_v1.0_source\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1143:16)
+    at Object.baseParse (C:\Users\patri\OneDrive\BaSIM v2.0\BaSIM_v1.0_source\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:2995:13)
+    at Object.parse (C:\Users\patri\OneDrive\BaSIM v2.0\BaSIM_v1.0_source\frontend\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:907:23)
+    at Object.parse$1 [as parse] (C:\Users\patri\OneDrive\BaSIM v2.0\BaSIM_v1.0_source\frontend\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1801:24)
+    at createDescriptor (file:///C:/Users/patri/OneDrive/BaSIM%20v2.0/BaSIM_v1.0_source/frontend/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+    at transformMain (file:///C:/Users/patri/OneDrive/BaSIM%20v2.0/BaSIM_v1.0_source/frontend/node_modules/@vitejs/plugin-vue/dist/index.mjs:2421:34
+
+Click outside, press Esc key, or fix the code to dismiss.
+You can also disable this overlay by setting server.hmr.overlay to false in vite.config.ts.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-12T07:41:07+08:00.
+
+The user's current state is as follows:
+Active Document: c:\Users\patri\OneDrive\BaSIM v2.0\BaSIM_v1.0_source\test_results\BaSIM_Engineering_Report(4).html (LANGUAGE_HTML)
+Cursor is on line: 1
+Other open documents:
+- c:\Users\patri\OneDrive\BaSIM v2.0\BaSIM_v1.0_source\test_results\BaSIM_Engineering_Report(4).html (LANGUAGE_HTML)
+- c:\Users\patri\OneDrive\BaSIM v2.0\BaSIM_v1.0_source\frontend\src\views\DesignView.vue (LANGUAGE_VUE)
+</ADDITIONAL_METADATA>

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SoakSIM — Free Australian Soakwell Sizing Tool</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+
+  <!-- Leaflet Point-in-Polygon -->
+  <script src="https://unpkg.com/@mapbox/leaflet-pip@1.1.0/leaflet-pip.js"></script>
+
+  <!-- Supabase Auth -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="/static/style.css?v=13" />
+</head>
+<body>
+
+<!-- ── Header ────────────────────────────────────────────────────────── -->
+<header>
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/></svg>
+    <div>
+      <h1>SoakSIM</h1>
+      <span>Free Australian Soakwell Sizing Tool</span>
+    </div>
+  </div>
+  <nav>
+    <a href="/help" target="_blank" style="margin-right:.5rem">Technical Reference</a>
+    <a href="https://innealta.com.au" target="_blank">innealta.com.au</a>
+    <a href="#" id="auth-link" style="margin-left:1rem;color:#ef4444">Logout</a>
+  </nav>
+</header>
+
+<!-- ── Main grid ─────────────────────────────────────────────────────── -->
+<div class="app-grid">
+
+  <!-- ── Sidebar ───────────────────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+
+    <!-- Location -->
+    <div class="card">
+      <h3>📍 Site Location</h3>
+      <p style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">Click the map or enter coordinates</p>
+      <div class="row">
+        <div class="field">
+          <label>Latitude</label>
+          <input type="number" id="inp-lat" value="-31.9505" step="0.0001" min="-44" max="-10" />
+        </div>
+        <div class="field">
+          <label>Longitude</label>
+          <input type="number" id="inp-lng" value="115.8605" step="0.0001" min="112" max="154" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Catchments -->
+    <div class="card">
+      <h3>🏠 Catchments</h3>
+      <div id="catchments-list"></div>
+      <button class="btn btn-outline btn-sm" style="margin-top:.4rem" onclick="addCatchment()">+ Add Catchment</button>
+    </div>
+
+    <!-- Storm settings -->
+    <div class="card">
+      <h3>🌧️ Storm Settings</h3>
+      <div class="field">
+        <label>AEP to analyse</label>
+        <select id="inp-aeps">
+          <option value="63.2">63.2% (EY&nbsp;1)</option>
+          <option value="50">50%</option>
+          <option value="20">20% (5yr ARI)</option>
+          <option value="10" selected>10% (10yr ARI)</option>
+          <option value="5" selected>5% (20yr ARI)</option>
+          <option value="2">2% (50yr ARI)</option>
+          <option value="1">1% (100yr ARI)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;justify-content:space-between">
+          Storm Durations
+          <span class="dur-toggle" onclick="toggleAllDurations()" style="font-size:.72rem;cursor:pointer;color:var(--primary);text-decoration:underline">Select / Deselect All</span>
+        </label>
+        <div class="duration-grid" id="duration-grid"></div>
+      </div>
+      <div class="row">
+      </div>
+    </div>
+
+    <!-- Soakwell design -->
+    <div class="card">
+      <h3>🪨 Soil &amp; Soakwell Design</h3>
+      <div class="row">
+        <div class="field">
+          <label>Infiltration rate (m/day)</label>
+          <input type="number" id="inp-infil" value="1.2" step="0.1" min="0.01" />
+        </div>
+        <div class="field" style="display:none">
+          <label>Drain time (hours)</label>
+          <input type="number" id="inp-drain" value="24" step="1" min="1" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Soil Moderation Factor (U)
+          <span class="info-bubble" title="In soakwell sizing, a Soil Moderation Factor (U) is applied to field-measured hydraulic conductivity.&#10;&#10;Soils are heterogeneous — point-scale field tests can misrepresent areal hydraulic conductivity. Field tests tend to overestimate sandy soils and underestimate clayey soils.&#10;&#10;Recommended values (Engineers Australia, 2006):&#10;  Sand: 0.5 (halves tested rate)&#10;  Sandy Clay: 1.0 (no change)&#10;  Medium/Heavy Clay: 2.0 (doubles tested rate)&#10;&#10;If using a calculated long-term conductivity value rather than a raw field test, U = 1.0 may be applied.">&#9432;</span>
+        </label>
+        <input type="number" id="inp-safety" value="0.5" step="0.1" min="0.1" />
+      </div>
+      <div id="soakwell-config-manual">
+        <h4 style="margin-top:.6rem;font-size:.82rem;color:var(--primary)">Soakwell Configuration</h4>
+        <div id="soakwell-config-list"></div>
+        <button class="btn btn-outline btn-sm" style="margin-top:.4rem" onclick="addSoakwellRow()">+ Add Size</button>
+      </div>
+
+      <div class="toggle-row" style="display:none">
+        <input type="checkbox" id="inp-live" checked />
+        <label for="inp-live">Use live ARR data (requires internet)</label>
+      </div>
+    </div>
+
+    <!-- Climate Change Scenario -->
+    <div class="card">
+      <h3>🌡️ Climate Change Scenario</h3>
+      <div class="row">
+        <div class="field">
+          <label>SSP Scenario</label>
+          <select id="inp-cc-scenario">
+            <option value="Historical" selected>Historical</option>
+            <option value="SSP1-2.6">SSP1-2.6 (Low emissions)</option>
+            <option value="SSP2-4.5">SSP2-4.5 (Intermediate)</option>
+            <option value="SSP3-7.0">SSP3-7.0 (High emissions)</option>
+            <option value="SSP5-8.5">SSP5-8.5 (Very high)</option>
+          </select>
+        </div>
+        <div class="field" id="cc-epoch-field" style="display:none">
+          <label>Planning horizon</label>
+          <select id="inp-cc-epoch">
+            <option value="2030">2030</option>
+            <option value="2040">2040</option>
+            <option value="2050" selected>2050</option>
+            <option value="2060">2060</option>
+            <option value="2070">2070</option>
+            <option value="2080">2080</option>
+            <option value="2090">2090</option>
+            <option value="2100">2100</option>
+          </select>
+        </div>
+      </div>
+      <p id="cc-info" class="muted" style="font-size:.75rem;margin-top:.3rem;color:var(--muted)">
+        <em>(i) Historical — only to be used for historical assessments</em>
+      </p>
+    </div>
+
+    <!-- Run -->
+    <button class="btn btn-primary btn-run" id="btn-run" onclick="runSimulation()">
+      ▶ Run Analysis
+    </button>
+
+  </aside>
+
+  <!-- ── Main area ─────────────────────────────────────────────────── -->
+  <div class="main">
+    <div id="map"></div>
+
+    <div class="results-area" id="results-area">
+      <!-- Placeholder before first run -->
+      <div class="placeholder" id="placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/>
+        </svg>
+        <p>Click the map to set your site location, configure your<br/>catchments and soil parameters, then press <strong>Run Analysis</strong>.</p>
+      </div>
+
+      <!-- Results (hidden until first run) -->
+      <div id="results-container" style="display:none">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="tab-design">Soakwell Design</button>
+          <button class="tab-btn" data-tab="tab-soakperf">Soakwell Performance</button>
+          <button class="tab-btn" data-tab="tab-runoff">Runoff Table</button>
+          <button class="tab-btn" data-tab="tab-hyeto">Hyetographs</button>
+          <button class="tab-btn" data-tab="tab-hydro">Cumulative Volume</button>
+          <button class="btn btn-outline btn-sm" id="btn-report" onclick="generateReport()" style="margin-left: auto;">Generate Report</button>
+        </div>
+
+        <!-- Design tab -->
+        <div class="tab-panel active" id="tab-design">
+          <div id="design-summary"></div>
+        </div>
+
+        <!-- Soakwell performance tab -->
+        <div class="tab-panel" id="tab-soakperf">
+          <div id="soakperf-charts"></div>
+        </div>
+
+        <!-- Runoff table tab -->
+        <div class="tab-panel" id="tab-runoff">
+          <div style="overflow-x:auto">
+            <table class="data-table" id="runoff-table">
+              <thead>
+                <tr>
+                  <th>AEP</th>
+                  <th>Duration (min)</th>
+                  <th>Temporal Pattern</th>
+                  <th>Peak Flow (m³/s)</th>
+                  <th>Volume (m³)</th>
+                  <th>Time to Peak (min)</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Hyetograph tab -->
+        <div class="tab-panel" id="tab-hyeto">
+          <div id="hyeto-charts"></div>
+        </div>
+
+        <!-- Hydrograph tab -->
+        <div class="tab-panel" id="tab-hydro">
+          <div id="hydro-charts"></div>
+        </div>
+      </div>
+      
+      <div id="lga-warning-box" style="display: none; padding: 0 1rem 1rem;"></div>
+    </div>
+
+    <footer>
+      &copy; 2026 <a href="https://innealta.com.au" target="_blank">Innealta Engineering</a> — SoakSIM is provided free of charge.
+      Results should be verified by a qualified engineer.
+    </footer>
+  </div>
+</div>
+
+<!-- ── Loading overlay ───────────────────────────────────────────────── -->
+<div class="loading-overlay" id="loading">
+  <div class="spinner-card">
+    <div class="spinner"></div>
+    <p style="font-weight:600;color:var(--text)">Running simulation…</p>
+    <p style="font-size:.8rem;color:var(--muted)">Fetching ARR data &amp; computing runoff</p>
+  </div>
+</div>
+
+<script src="/static/app.js?v=14"></script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+BasinSIM End‑User License Agreement (EULA)
+
+IMPORTANT — PLEASE READ CAREFULLY
+
+This End‑User License Agreement (the “Agreement”) is a legal agreement between you (an individual or legal entity) and Innealta Software (ABN: 40 712 622 037) (“we”, “us”, or “Licensor”) governing your use of the BasinSIM software, including any associated media, documentation, and updates (collectively, the “Software”). By installing, activating, or using the Software, you agree to be bound by this Agreement. If you do not agree, do not install or use the Software.
+
+1. License Grant and Scope
+1.1 Grant. Subject to your compliance with this Agreement, we grant you a limited, non‑exclusive, non‑transferable, revocable license to install and use the Software for your internal engineering, analysis, and planning purposes.
+1.2 Activation and Trial. The Software may require activation with an email address and, where applicable, a license key. Trial periods (if offered) are time‑limited and may be device‑bound. We may, at our discretion, offer complimentary access to users from certain domains (e.g., “.wa.gov.au”).
+1.3 Seat/Device. Unless otherwise agreed in writing, a license is for a single user and may be bound to a device or machine identifier.
+1.4 Outputs. You may use, copy, and include Software‑generated outputs (e.g., images, plots, CSVs) in your deliverables, provided that you accept sole responsibility for their interpretation and for verifying their suitability for your application.
+
+2. Ownership and Third‑Party Components
+2.1 Ownership. The Software is licensed, not sold. We and our licensors retain all rights, title, and interest in and to the Software.
+2.2 Open‑Source and Third‑Party Materials. The Software uses third‑party components (e.g., MODFLOW 6, FloPy, NumPy, Pandas, Matplotlib, Pillow, and others) governed by their respective licenses. You agree to comply with those licenses. Nothing in this Agreement limits your rights under applicable open‑source licenses.
+
+3. Acceptable Use and Restrictions
+3.1 You must not: (a) rent, lease, sublicense, distribute, or make the Software available to third parties (including timesharing or service bureau use); (b) circumvent or attempt to bypass license controls, activation, or usage limits; (c) reverse engineer, decompile, or disassemble the Software except to the extent such restriction is prohibited by applicable law; (d) remove or obscure proprietary notices; or (e) use the Software to develop a competing product.
+3.2 You are responsible for the accuracy of your inputs and any pre‑ or post‑processing applied to outputs.
+
+4. Professional Judgment and Reliance
+4.1 No Professional Advice. The Software is a computational tool. It does not constitute engineering, hydrology, or planning advice and is not a substitute for professional judgment.
+4.2 Verification. You are solely responsible for validating assumptions, inputs, boundary conditions, and outputs against applicable standards, codes, guidelines, and site‑specific constraints.
+
+5. Privacy, Data, and Telemetry
+5.1 Minimal Data. The Software may store local preferences, logs, and license/activation data on your device. Logs are intended for troubleshooting and support.
+5.2 Internet Access. Certain features (e.g., update checks, license validation) may require an internet connection. Network use is limited to those features and any external services you choose to invoke.
+
+6. Updates, Changes, and Support
+6.1 Updates. We may provide updates or changes at our discretion. Some updates may be required to maintain functionality or compatibility.
+6.2 Compatibility. You are responsible for platform and dependency compatibility unless otherwise stated.
+6.3 Support. Any support or maintenance, if offered, is provided on an as‑available basis and may be subject to separate terms.
+
+7. Warranty Disclaimer
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED “AS IS” AND “AS AVAILABLE,” WITH ALL FAULTS AND WITHOUT WARRANTY OF ANY KIND, WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, INCLUDING WITHOUT LIMITATION ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON‑INFRINGEMENT, ACCURACY, OR RESULTS.
+
+8. Limitation of Liability
+8.1 Exclusion of Certain Damages. TO THE MAXIMUM EXTENT PERMITTED BY LAW, WE SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES; OR FOR LOSS OF PROFITS, REVENUE, GOODWILL, DATA, OR BUSINESS INTERRUPTION, ARISING FROM OR RELATED TO THIS AGREEMENT OR THE SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+8.2 Cap on Direct Damages. TO THE EXTENT NOT EXCLUDED, OUR AGGREGATE LIABILITY FOR DIRECT DAMAGES SHALL NOT EXCEED THE AMOUNT YOU PAID (IF ANY) FOR THE LICENSE TO THE SOFTWARE IN THE TWELVE (12) MONTHS PRECEDING THE EVENT GIVING RISE TO THE CLAIM.
+8.3 Essential Basis. The foregoing limitations and exclusions are an essential basis of the bargain under this Agreement.
+
+9. Indemnity
+You shall indemnify and hold harmless the Licensor from and against any claims, damages, liabilities, costs, and expenses (including reasonable legal fees) arising out of or related to: (a) your use of the Software, including reliance on outputs; (b) your breach of this Agreement; or (c) your violation of applicable laws or third‑party rights.
+
+10. Term and Termination
+10.1 Term. This Agreement is effective from your first installation or use of the Software and continues until terminated.
+10.2 Termination for Cause. We may suspend or terminate your license immediately if you materially breach this Agreement or attempt to circumvent license controls.
+10.3 Effect of Termination. Upon termination, you must cease use of the Software and destroy all copies in your possession or control. Sections that by their nature should survive (including 2, 4, 7–12) shall survive termination.
+
+11. Export, Sanctions, and Government Use
+11.1 Export Controls. You must comply with applicable export and sanctions laws and may not export or re‑export the Software to prohibited countries or parties.
+11.2 Government Use. If the Software is acquired by or on behalf of a government, it is provided as “Commercial Computer Software” subject to this Agreement.
+
+12. Governing Law and Disputes
+This Agreement is governed by the laws of Western Australia, excluding conflict‑of‑laws rules. The parties submit to the non‑exclusive jurisdiction of the courts of Western Australia for any dispute arising out of or relating to this Agreement.
+
+13. General
+13.1 Entire Agreement. This Agreement is the entire agreement between you and us regarding the Software and supersedes any prior or contemporaneous terms on the same subject.
+13.2 Severability. If any provision is unenforceable, the remaining provisions remain in full force.
+13.3 Assignment. You may not assign this Agreement without our prior written consent; we may assign at our discretion.
+13.4 Notices. Notices to you may be delivered within the Software, via email, or to your last known address; notices to us should be sent to Innealta Software at the contact provided in the Software documentation or website.
+
+BY CLICKING “I AGREE,” INSTALLING, OR USING THE SOFTWARE, YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGREE TO BE BOUND BY THIS AGREEMENT.
+
+Last updated: 29 August 2025

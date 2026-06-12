@@ -1,0 +1,7 @@
+cd C:\Users\patri\OneDrive\BaSIM
+
+# 1) Load your private key (32‑byte hex) into an env var for this session
+$env:BASIM_ISSUER_PRIV = (Get-Content .\secrets\basim_private.hex).Trim()
+
+# 2) Issue the license (expiry optional; defaults to +365 days)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:BASIM_ISSUER_PRIV = (Get-Content 'C:\Users\patri\OneDrive\BaSIM\secrets\basim_private.hex' -ErrorAction Stop).Trim(); & 'C:\Users\patri\OneDrive\BaSIM\.venv\Scripts\python.exe' 'C:\Users\patri\OneDrive\BaSIM\tools\license_issuer.py' 'C:\Users\patri\OneDrive\Desktop\license_request.json' --customer 'Patrick Hayes 1' --edition 'Pro' --expiry 2026-12-31 --out 'C:\Users\patri\OneDrive\BaSIM\dist\Patrick_Hayes_1.lic'"

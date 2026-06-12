@@ -1,0 +1,6 @@
+﻿1. Custodian provided geometry in GDA2020
+2. Upload
+    a.  Geometry was uploaded unchanged
+3. Download
+    a.  Geometry was downloaded unchanged
+

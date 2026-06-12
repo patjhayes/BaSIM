@@ -1,0 +1,34 @@
+{
+  "scenario_title": "Scenario D",
+  "model_tag": "desktop",
+  "basin_geometry": {
+    "length_floor": 50.0,
+    "width_floor": 11.0,
+    "max_depth": 2.0,
+    "side_slope_hv": 2.0,
+    "floor_elev": 10.0
+  },
+  "aquifer": {
+    "k_horizontal_mpd": 8.0,
+    "k_vertical_mpd": 8.0,
+    "ss": 1e-07,
+    "sy": 0.15,
+    "initial_head": -5.0,
+    "bottom_elev": -24.0
+  },
+  "infiltration": {
+    "mode": "full",
+    "bed_thickness_m": 0.2,
+    "bed_k_mpd": 2.0,
+    "side_k_mpd": 2.0,
+    "side_k_separate": false
+  },
+  "perf": {
+    "mode": "accurate",
+    "min_cells_wide": 7
+  },
+  "post_storm_days": 2.0,
+  "post_storm_step_hours": 1.0,
+  "lightweight_outputs": true,
+  "cleanup_heavy": true
+}

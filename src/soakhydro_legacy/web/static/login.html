@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - SoakSIM</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #f3f4f6; }
+        .auth-container { background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        h1 { color: #1a6b4f; text-align: center; margin-bottom: 1.5rem; }
+        .input-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; color: #333; }
+        input { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .btn-group { display: flex; gap: 1rem; margin-top: 1.5rem; }
+        .link-row { margin-top: 0.5rem; text-align: right; }
+        .link-button { background: none; border: none; color: #1a6b4f; cursor: pointer; font-size: 0.9rem; padding: 0; }
+        button { flex: 1; padding: 0.75rem; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        #btn-login { background-color: #1a6b4f; color: white; }
+        #btn-signup { background-color: #e2e8f0; color: #333; }
+        #error-box { margin-top: 1rem; text-align: center; display: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="auth-container">
+        <h1>SoakSIM Access</h1>
+        <div id="error-box"></div>
+        
+        <div class="input-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" required>
+        </div>
+        <div class="input-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" required>
+        </div>
+        <div class="link-row">
+            <button class="link-button" onclick="forgotPassword()">Forgot password?</button>
+        </div>
+        
+        <div class="btn-group">
+            <button id="btn-login" onclick="signIn()">Log In</button>
+            <button id="btn-signup" onclick="signUp()">Sign Up</button>
+        </div>
+    </div>
+
+    <script>
+        // 1. Initialize Supabase (Renamed to supabaseClient to prevent naming collisions)
+        const SUPABASE_URL = 'https://rwtpoehohxbtobxrmedi.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_p6Vn56YyXff8z06PPZ213Q_ccLXPows';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const errorBox = document.getElementById('error-box');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+
+        function showMessage(msg, isError = false) {
+            console.log("Status Update:", msg);
+            errorBox.textContent = msg;
+            errorBox.style.color = isError ? '#dc2626' : '#1a6b4f';
+            errorBox.style.display = 'block';
+        }
+
+        // 2. Auto-redirect if already logged in
+        supabaseClient.auth.getSession().then(({ data: { session } }) => {
+            if (session) {
+                console.log("Session found. Redirecting to app...");
+                window.location.href = window.location.origin;
+            }
+        });
+
+        // 3. Login Logic
+        async function signIn() {
+            showMessage("Authenticating...");
+            const { error } = await supabaseClient.auth.signInWithPassword({
+                email: emailInput.value,
+                password: passwordInput.value,
+            });
+            
+            if (error) {
+                showMessage(error.message, true);
+            } else {
+                showMessage("Success! Redirecting...");
+                setTimeout(() => { window.location.href = window.location.origin; }, 1000);
+            }
+        }
+
+        // 4. Signup Logic
+        async function signUp() {
+            showMessage("Creating account...");
+            const { error } = await supabaseClient.auth.signUp({
+                email: emailInput.value,
+                password: passwordInput.value,
+            });
+
+            if (error) {
+                showMessage(error.message, true);
+            } else {
+                showMessage("Account created! You can now log in.");
+            }
+        }
+
+        async function forgotPassword() {
+            if (!emailInput.value) {
+                showMessage("Enter your email first to reset your password.", true);
+                return;
+            }
+            showMessage("Sending password reset email...");
+            const { error } = await supabaseClient.auth.resetPasswordForEmail(emailInput.value, {
+                redirectTo: `${window.location.origin}/login`,
+            });
+            if (error) {
+                showMessage(error.message, true);
+            } else {
+                showMessage("Password reset email sent. Check your inbox.");
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,215 @@
+    def _create_basin_group(self):
+        """Basin geometry inputs with Manual / DEM toggle"""
+        group = QGroupBox("Basin Geometry")
+        layout = QFormLayout()
+
+        # ── Source toggle: Manual vs DEM ──────────────────────────
+        src_row = QWidget()
+        src_h = QHBoxLayout(src_row)
+        src_h.setContentsMargins(0, 0, 0, 0)
+        self.basin_source_manual = QRadioButton("Manual")
+        self.basin_source_dem = QRadioButton("DEM File")
+        self.basin_source_manual.setChecked(True)
+        src_grp = QButtonGroup(self)
+        src_grp.addButton(self.basin_source_manual)
+        src_grp.addButton(self.basin_source_dem)
+        src_h.addWidget(self.basin_source_manual)
+        src_h.addWidget(self.basin_source_dem)
+        src_info = self._make_info_button(
+            "Manual: enter rectangular geometry.\n"
+            "DEM File: upload a .dem or .tif file — the DEM elevation grid "
+            "drives the MODFLOW model surface directly."
+        )
+        src_h.addWidget(src_info)
+        src_h.addStretch()
+        layout.addRow(self._label_with_info("Source:", "Choose how the basin geometry is defined."), src_row)
+
+        # ── DEM file browser (hidden by default) ─────────────────
+        self.dem_file_row = QWidget()
+        dem_h = QHBoxLayout(self.dem_file_row)
+        dem_h.setContentsMargins(0, 0, 0, 0)
+        self.dem_file_edit = QLineEdit()
+        self.dem_file_edit.setPlaceholderText("Select .dem or .tif file…")
+        self.dem_file_edit.setReadOnly(True)
+        dem_browse = QPushButton("Browse…")
+        dem_browse.clicked.connect(self._browse_dem_file)
+        dem_h.addWidget(self.dem_file_edit, stretch=1)
+        dem_h.addWidget(dem_browse)
+        self.dem_file_label = self._label_with_info("DEM File:", "USGS DEM (.dem) or GeoTIFF (.tif/.tiff).")
+        layout.addRow(self.dem_file_label, self.dem_file_row)
+
+        # ── Crest elevation (DEM mode only) ──────────────────────
+        self.dem_crest_input = QDoubleSpinBox()
+        self.dem_crest_input.setRange(-100, 5000)
+        self.dem_crest_input.setValue(10.0)
+        self.dem_crest_input.setSuffix(" m")
+        self.dem_crest_input.setDecimals(2)
+        self.dem_crest_label = self._label_with_info(
+            "Crest Elevation:",
+            "Elevation of the basin rim (m). Cells below this are classified as basin (lake) cells."
+        )
+        layout.addRow(self.dem_crest_label, self.dem_crest_input)
+
+        # ── Min cell size (DEM mode only) ────────────────────────
+        self.dem_cell_size_input = QDoubleSpinBox()
+        self.dem_cell_size_input.setRange(1.0, 50.0)
+        self.dem_cell_size_input.setValue(5.0)
+        self.dem_cell_size_input.setSuffix(" m")
+        self.dem_cell_size_input.setDecimals(1)
+        self.dem_cell_size_input.setSingleStep(1.0)
+        self.dem_cell_size_label = self._label_with_info(
+            "Min Cell Size:",
+            "Minimum MODFLOW cell dimension (m). The DEM is coarsened "
+            "until cells are at least this size. Larger values run faster "
+            "but lose spatial detail. Default 5 m is a good balance."
+        )
+        layout.addRow(self.dem_cell_size_label, self.dem_cell_size_input)
+
+        # Basin shape fixed to Rectangle (manual mode)
+        shape_row = QWidget()
+        h = QHBoxLayout(shape_row)
+        h.setContentsMargins(0, 0, 0, 0)
+        lbl = QLabel("Shape: Rectangle")
+        info = self._make_info_button("Basin planform is rectangular. Circular and trapezoidal basins are not supported in this version.")
+        h.addWidget(lbl)
+        h.addWidget(info)
+        h.addStretch()
+        self.manual_shape_row = shape_row
+        layout.addRow(shape_row)
+        
+        # Length
+        self.length_input = QDoubleSpinBox()
+        self.length_input.setRange(1, 10000)
+        self.length_input.setValue(self.config["basin_geometry"]["length_floor"])
+        self.length_input.setSuffix(" m")
+        self.length_input.setDecimals(1)
+        layout.addRow(self._label_with_info("Floor Length:", "Length of the flat basin floor in meters (x-direction)."), self.length_input)
+        
+        # Width
+        self.width_input = QDoubleSpinBox()
+        self.width_input.setRange(1, 10000)
+        self.width_input.setValue(self.config["basin_geometry"]["width_floor"])
+        self.width_input.setSuffix(" m")
+        self.width_input.setDecimals(1)
+        layout.addRow(self._label_with_info("Floor Width:", "Width of the flat basin floor in meters (y-direction)."), self.width_input)
+        
+        # Depth
+        self.depth_input = QDoubleSpinBox()
+        self.depth_input.setRange(0.1, 20)
+        self.depth_input.setValue(self.config["basin_geometry"]["max_depth"])
+        self.depth_input.setSuffix(" m")
+        self.depth_input.setDecimals(2)
+        layout.addRow(self._label_with_info("Max Depth:", "Water depth from basin floor to crest. Controls sidewall extent with slope."), self.depth_input)
+        
+        # Side slope
+        self.side_slope_input = QDoubleSpinBox()
+        self.side_slope_input.setRange(0, 10)
+        self.side_slope_input.setValue(self.config["basin_geometry"]["side_slope_hv"])
+        self.side_slope_input.setSuffix(" H:V")
+        self.side_slope_input.setDecimals(1)
+        layout.addRow(self._label_with_info("Side Slope:", "Horizontal:Vertical side slope (e.g., 3 means 3H:1V)."), self.side_slope_input)
+        
+        # Floor elevation (basin level)
+        self.floor_elev_input = QDoubleSpinBox()
+        self.floor_elev_input.setRange(-100, 1000)
+        self.floor_elev_input.setValue(self.config["basin_geometry"]["floor_elev"])
+        self.floor_elev_input.setSuffix(" m AHD")
+        self.floor_elev_input.setDecimals(2)
+        layout.addRow(self._label_with_info("Floor Elevation:", "Elevation of basin floor (m AHD)."), self.floor_elev_input)
+        
+        # Custom depth–area relationship
+        da_row = QWidget()
+        da_h = QHBoxLayout(da_row)
+        da_h.setContentsMargins(0, 0, 0, 0)
+        self.use_custom_da_check = QCheckBox("Use custom depth–area…")
+        self.use_custom_da_check.setToolTip("Provide your own depth (m) vs surface area (m²) table; volume is integrated from the curve.")
+        edit_btn = QPushButton("Edit Table…")
+        edit_btn.clicked.connect(self._edit_depth_area_table)
+        da_h.addWidget(self.use_custom_da_check)
+        da_h.addWidget(edit_btn)
+        da_h.addStretch()
+        layout.addRow(self._label_with_info("Depth–Area:", "Optionally override trapezoid geometry with your own depth→surface area relationship."), da_row)
+        
+        # hook design preview updates
+        try:
+            self.length_input.valueChanged.connect(self._update_design_view)
+            self.width_input.valueChanged.connect(self._update_design_view)
+            self.depth_input.valueChanged.connect(self._update_design_view)
+            self.side_slope_input.valueChanged.connect(self._update_design_view)
+            self.floor_elev_input.valueChanged.connect(self._update_design_view)
+            self.dem_crest_input.valueChanged.connect(self._update_design_view)
+            self.dem_cell_size_input.valueChanged.connect(self._update_design_view)
+        except Exception:
+            pass
+
+        # Collect manual-only and DEM-only widgets for toggling
+        self._manual_widgets = [
+            self.manual_shape_row,
+            self.length_input, self.width_input,
+            self.depth_input, self.side_slope_input,
+            self.floor_elev_input,
+        ]
+        self._dem_widgets = [
+            self.dem_file_row, self.dem_file_label,
+            self.dem_crest_input, self.dem_crest_label,
+            self.dem_cell_size_input, self.dem_cell_size_label,
+        ]
+        # Wire toggle
+        self.basin_source_manual.toggled.connect(self._toggle_basin_source)
+        self._toggle_basin_source(True)  # initial state: manual
+
+        group.setLayout(layout)
+        return group
+
+    def _toggle_basin_source(self, manual_checked: bool):
+        """Show/hide manual vs DEM widgets based on radio selection."""
+        for w in self._manual_widgets:
+            w.setVisible(manual_checked)
+        # Also hide the label for manual widgets in the form layout
+        try:
+            form = self.length_input.parent().layout()
+            if isinstance(form, QFormLayout):
+                for w in [self.length_input, self.width_input, self.depth_input,
+                          self.side_slope_input, self.floor_elev_input]:
+                    label = form.labelForField(w)
+                    if label:
+                        label.setVisible(manual_checked)
+        except Exception:
+            pass
+        for w in self._dem_widgets:
+            w.setVisible(not manual_checked)
+        try:
+            self._update_design_view()
+        except Exception:
+            pass
+
+    def _browse_dem_file(self):
+        """Open file dialog to select a DEM file."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select DEM File",
+            "",
+            "DEM Files (*.dem *.tif *.tiff);;All Files (*)",
+        )
+        if path:
+            self.dem_file_edit.setText(path)
+            # Try to auto-detect crest elevation from DEM
+            try:
+                from src.utils.dem_parser import parse_dem_file
+                dem = parse_dem_file(path)
+                # Suggest crest as max elevation (user can adjust)
+                self.dem_crest_input.setValue(round(dem.max_elev, 2))
+                if dem.is_geographic:
+                    QMessageBox.warning(
+                        self, "Geographic CRS",
+                        "This DEM uses geographic coordinates (lat/lon).\n"
+                        "Cell sizes are in degrees, not metres.\n"
+                        "Results may be inaccurate — consider reprojecting the DEM."
+                    )
+            except Exception:
+                pass
+            try:
+                self._update_design_view()
+            except Exception:
+                pass
+

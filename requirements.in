@@ -1,0 +1,46 @@
+## High-level (unpinned or semi-pinned) requirements specification for BaSIM
+# This file is the SOURCE specification. Do NOT deploy this file with the app.
+# The build pipeline resolves these into a pinned requirements.txt lock file.
+
+# Core scientific computing packages (exact versions retained if already tested)
+numpy==2.2.6
+scipy==1.15.3
+pandas==2.3.2
+
+# MODFLOW interface
+flopy==3.9.3
+
+# Plotting
+matplotlib==3.10.5
+
+# GUI (legacy + current)
+customtkinter>=5.2.2
+PyQt6>=6.6.0
+pyqtgraph>=0.13.0
+
+# Licensing
+PyNaCl>=1.5.0
+
+# API server (future / optional runtime service)
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.6
+python-multipart>=0.0.7
+
+# Transitive / ancillary (leave unpinned; freeze will lock exact)
+contourpy>=1.3.0
+cycler>=0.12.0
+fonttools>=4.59.0
+kiwisolver>=1.4.0
+packaging>=25.0
+pillow>=11.3.0
+pyparsing>=3.2.0
+python-dateutil>=2.9.0
+pytz>=2025.2
+six>=1.17.0
+tzdata>=2025.2
+
+# Optional (commented out)
+# plotly>=6.3.0
+# kaleido==1.0.0
+# openpyxl>=3.0.0
+# seaborn==0.13.2

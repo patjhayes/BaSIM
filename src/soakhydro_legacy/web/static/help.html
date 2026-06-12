@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SoakSIM — Technical Reference</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <!-- KaTeX for maths rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]});"></script>
+  <style>
+    :root {
+      --primary: #1a6b4f;
+      --primary-light: #28a77d;
+      --text: #1e293b;
+      --muted: #64748b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.7;
+      font-size: 0.92rem;
+    }
+    header {
+      background: linear-gradient(135deg, #0f4c35 0%, var(--primary) 100%);
+      color: #fff;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header .brand { display: flex; align-items: center; gap: .6rem; }
+    header h1 { font-size: 1.3rem; font-weight: 800; }
+    header span { font-size: .75rem; opacity: .8; }
+    header nav a { color: #a7f3d0; text-decoration: none; font-size: .82rem; font-weight: 600; }
+    header nav a:hover { color: #fff; }
+
+    .container {
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 0 1.5rem 4rem;
+    }
+    h2 {
+      color: var(--primary);
+      font-size: 1.4rem;
+      margin: 2.5rem 0 0.8rem;
+      padding-bottom: .3rem;
+      border-bottom: 2px solid var(--primary-light);
+    }
+    h3 {
+      color: var(--primary);
+      font-size: 1.1rem;
+      margin: 1.8rem 0 0.5rem;
+    }
+    h4 {
+      font-size: 0.95rem;
+      margin: 1.2rem 0 0.4rem;
+      color: #334155;
+    }
+    p, li { margin-bottom: .5rem; }
+    ul, ol { padding-left: 1.5rem; }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 1rem 0;
+      font-size: .85rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: .45rem .7rem;
+      text-align: left;
+    }
+    th { background: #f1f5f9; font-weight: 600; color: var(--primary); }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.4rem;
+      margin: 1rem 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .note {
+      background: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      padding: .8rem 1rem;
+      margin: 1rem 0;
+      border-radius: 0 8px 8px 0;
+      font-size: .85rem;
+    }
+    .note strong { color: #1d4ed8; }
+    .warn {
+      background: #fef3c7;
+      border-left: 4px solid #f59e0b;
+      padding: .8rem 1rem;
+      margin: 1rem 0;
+      border-radius: 0 8px 8px 0;
+      font-size: .85rem;
+    }
+    .warn strong { color: #b45309; }
+    code {
+      background: #f1f5f9;
+      padding: .15rem .35rem;
+      border-radius: 4px;
+      font-size: .82rem;
+    }
+    .toc {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.2rem 1.5rem;
+      margin: 1.5rem 0;
+    }
+    .toc h3 { margin-top: 0; font-size: 1rem; }
+    .toc ol { margin: .5rem 0 0; }
+    .toc a { color: var(--primary); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    .flowchart {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      flex-wrap: wrap;
+      margin: 1rem 0;
+      font-size: .82rem;
+    }
+    .flowchart .step {
+      background: var(--primary);
+      color: #fff;
+      padding: .4rem .8rem;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    .flowchart .arrow { color: var(--muted); font-size: 1.2rem; }
+    .katex-display { margin: 1rem 0; }
+    @media (max-width: 700px) {
+      .container { padding: 0 .8rem 3rem; }
+      h2 { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/></svg>
+    <div>
+      <h1>SoakSIM — Technical Reference</h1>
+      <span>Mathematical Basis &amp; Worked Example</span>
+    </div>
+  </div>
+  <nav>
+    <a href="/">← Back to App</a>
+  </nav>
+</header>
+
+<div class="container">
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<div class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#overview">Overview &amp; Computation Pipeline</a></li>
+    <li><a href="#step1">Step 1 — Design Rainfall (BOM IFD)</a></li>
+    <li><a href="#step2">Step 2 — Temporal Patterns (ARR 2019)</a></li>
+    <li><a href="#step3">Step 3 — Hyetograph Generation</a></li>
+    <li><a href="#step4">Step 4 — Rainfall Losses (ILSAX Model)</a></li>
+    <li><a href="#step5">Step 5 — Runoff Routing (Time-Area)</a></li>
+    <li><a href="#step6">Step 6 — Soakwell Hydraulic Routing (Mass Balance)</a></li>
+    <li><a href="#step7">Step 7 — Argue (2004) Emptying Time Check</a></li>
+    <li><a href="#step8">Step 8 — Soil Moderation Factor (U)</a></li>
+    <li><a href="#step9">Step 9 — ARR Probability-Neutral Pattern Selection</a></li>
+    <li><a href="#step10">Step 10 — Auto-Design Optimiser</a></li>
+    <li><a href="#worked">Worked Example</a></li>
+    <li><a href="#references">References</a></li>
+  </ol>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="overview">1. Overview &amp; Computation Pipeline</h2>
+
+<p>SoakSIM sizes soakwell infiltration systems to Australian standards by coupling the ILSAX hydrological model (ILSAX Reference, 2018) with ARR 2019 design inputs and a mass-balance soakwell routing engine consistent with the Stormwater Management Manual for Western Australia (Argue, 2004).</p>
+
+<div class="flowchart">
+  <span class="step">BOM IFD Depths</span><span class="arrow">→</span>
+  <span class="step">ARR Temporal Patterns</span><span class="arrow">→</span>
+  <span class="step">Hyetograph</span><span class="arrow">→</span>
+  <span class="step">ILSAX Losses</span><span class="arrow">→</span>
+  <span class="step">Time-Area Routing</span><span class="arrow">→</span>
+  <span class="step">Soakwell Mass Balance</span><span class="arrow">→</span>
+  <span class="step">Design Check</span>
+</div>
+
+<p>Each storm duration and AEP combination is simulated for <strong>every</strong> ARR temporal pattern. The adopted design pattern is selected using the ARR probability-neutral method (Section 9). The critical duration is the one producing the greatest peak soakwell depth.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="step1">2. Step 1 — Design Rainfall (BOM IFD)</h2>
+
+<p>Design rainfall depths are sourced from the <strong>Bureau of Meteorology Intensity-Frequency-Duration (IFD) Design Rainfall Data System</strong> (Revised 2016, based on ARR 2019). SoakSIM scrapes the official BOM web interface at:</p>
+<p style="margin-left:1rem;"><code>http://www.bom.gov.au/water/designRainfalls/revised-ifd/</code></p>
+
+<p>For a given site coordinate (latitude, longitude), the system retrieves a matrix of depth values (mm) across:</p>
+<ul>
+  <li><strong>Durations:</strong> 1 min through 168 hours (7 days)</li>
+  <li><strong>AEPs:</strong> 63.2%, 50%, 20%, 10%, 5%, 2%, 1%</li>
+</ul>
+
+<p>The depth $P$ (mm) for a given duration $D$ and AEP is the total rainfall expected to fall in that duration with that annual probability of exceedance.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="step2">3. Step 2 — Temporal Patterns (ARR 2019)</h2>
+
+<p>ARR 2019 replaces the old single design temporal pattern with an <strong>ensemble of 10 temporal patterns</strong> per duration. These are expressed as cumulative fraction arrays $\{F_1, F_2, \ldots, F_n\}$ where $F_n = 1.0$.</p>
+
+<p>Patterns are fetched from the ARR Data Hub:</p>
+<p style="margin-left:1rem;"><code>https://data.arr-software.org/</code></p>
+
+<p>Each pattern represents one historically observed way that rainfall can be distributed across the storm duration. Using all 10 patterns avoids bias toward any single distribution shape.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="step3">4. Step 3 — Hyetograph Generation</h2>
+
+<p>Each temporal pattern is combined with the BOM design depth to create a time-varying rainfall hyetograph.</p>
+
+<div class="card">
+  <h4>Procedure</h4>
+  <ol>
+    <li>Compute cumulative rainfall depths: $P_i^{\text{cum}} = F_i \times P_{\text{total}}$</li>
+    <li>Interpolate onto a regular computational timestep $\Delta t$ (adaptive: 5 min for short storms, up to 60 min for 168-hour storms)</li>
+    <li>Compute incremental depths per timestep: $p_j = P_j^{\text{cum}} - P_{j-1}^{\text{cum}}$</li>
+  </ol>
+</div>
+
+<p>The result is a depth series $\{p_1, p_2, \ldots, p_N\}$ in mm, where $N = D / \Delta t$.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="step4">5. Step 4 — Rainfall Losses (ILSAX Model)</h2>
+
+<p>SoakSIM uses the <strong>ILSAX hydrological model</strong> as described in the ILSAX Reference (June 2018, Section 8.3.2). Three surface types are modelled independently:</p>
+
+<table>
+  <tr><th>Surface</th><th>Loss Method</th><th>Description</th></tr>
+  <tr><td><strong>Paved</strong> (DCIA)</td><td>Depression storage only</td><td>Directly-connected impervious — roofs, sealed driveways. Only a small initial abstraction (typically 1 mm).</td></tr>
+  <tr><td><strong>Supplementary</strong></td><td>Depression storage only</td><td>Indirectly-connected impervious areas that drain to pervious surfaces first.</td></tr>
+  <tr><td><strong>Grassed</strong> (pervious)</td><td>Horton infiltration + depression storage</td><td>Lawns, gardens. Uses full Horton infiltration capacity curve.</td></tr>
+</table>
+
+<h3>5.1 Depression Storage (Initial Loss)</h3>
+<p>Depression storage acts as a bucket that must fill before any runoff occurs:</p>
+$$p_j^{\text{excess}} = \max\left(0,\; p_j - S_{\text{remaining}}\right)$$
+<p>where $S_{\text{remaining}}$ decreases as rainfall fills the depression stores. Typical values: 1 mm (paved), 1 mm (supplementary), 5 mm (grassed).</p>
+
+<h3>5.2 Horton Infiltration (Grassed Areas Only)</h3>
+<p>The Horton equation describes the soil's time-varying infiltration capacity:</p>
+$$f(t) = f_c + (f_0 - f_c)\,e^{-k\,t}$$
+<p>where:</p>
+<ul>
+  <li>$f_0$ = initial infiltration rate (mm/hr) — depends on soil type</li>
+  <li>$f_c$ = final (constant) infiltration rate (mm/hr)</li>
+  <li>$k$ = decay constant (hr$^{-1}$) = 2.0 for all soil types</li>
+</ul>
+
+<table>
+  <tr><th>Soil Type</th><th>$f_0$ (mm/hr)</th><th>$f_c$ (mm/hr)</th></tr>
+  <tr><td>A (Sandy)</td><td>250</td><td>25</td></tr>
+  <tr><td>B (Sandy Loam)</td><td>200</td><td>13</td></tr>
+  <tr><td>C (Clay Loam)</td><td>125</td><td>6</td></tr>
+  <tr><td>D (Heavy Clay)</td><td>75</td><td>3</td></tr>
+</table>
+
+<p>The <strong>Antecedent Moisture Condition</strong> (AMC 1–4) adjusts the starting infiltration rate. Higher AMC = wetter soil = lower starting capacity.</p>
+
+<h4>Watson's Non-Iterative Method (External Eq. 8.7–8.8)</h4>
+<p>Rather than iterating over the Horton equation, SoakSIM uses Watson's method which splits infiltration into a <em>diminishing</em> component and a <em>constant</em> component:</p>
+
+$$\Delta F_{\text{cap}} = \left(1 - e^{-k\,\Delta t}\right)\left(F_{\text{max}}^{\text{dim}} - F_d\right) + f_c \cdot \Delta t$$
+
+<p>where $F_{\text{max}}^{\text{dim}} = (f_0 - f_c) / k$ is the total diminishing infiltration capacity, and $F_d$ is the accumulated diminishing infiltration so far. The actual infiltration for each timestep is:</p>
+
+$$f_{\text{actual}} = \min\left(p_j,\; \Delta F_{\text{cap}}\right)$$
+
+<p>Excess rainfall (runoff) from the grassed surface for each timestep is:</p>
+
+$$p_j^{\text{excess}} = p_j - f_{\text{actual}}$$
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="step5">6. Step 5 — Runoff Routing (Time-Area Method)</h2>
+
+<h3>6.1 Time of Entry (Kinematic Wave Equation)</h3>
+<p>Each surface type has a travel time computed from the kinematic wave equation (Ragan &amp; Duru, 1972; Ragan & Duru Eq):</p>
+
+$$t_e = 6.94 \,\frac{(L \cdot n^*)^{0.6}}{I^{0.4} \cdot S^{0.3}}$$
+
+<p>where:</p>
+<ul>
+  <li>$L$ = overland flow path length (m)</li>
+  <li>$n^*$ = retardance coefficient (surface roughness, similar to Manning's $n$)</li>
+  <li>$I$ = mean rainfall intensity (mm/hr)</li>
+  <li>$S$ = slope (m/m)</li>
+</ul>
+<p>Total time of entry = $t_e$ + any user-specified additional travel time.</p>
+
+<h3>6.2 Time-Area Convolution</h3>
+<p>A linear time-area histogram represents the proportion of catchment area contributing runoff at each timestep. The runoff hydrograph is generated by convolving excess rainfall with this histogram:</p>
+
+$$Q_n = \frac{A}{360}\sum_{i} h_i \cdot I_{n-i}$$
+
+<p>where:</p>
+<ul>
+  <li>$Q_n$ = discharge at timestep $n$ (m³/s)</li>
+  <li>$A$ = contributing area (ha)</li>
+  <li>$h_i$ = fraction of area in the $i$-th histogram ordinate</li>
+  <li>$I_{n-i}$ = excess rainfall intensity at timestep $n-i$ (mm/hr)</li>
+  <li>The factor 360 converts ha·mm/hr → m³/s</li>
+</ul>
+
+<p>The three surface discharges (paved, supplementary, grassed) are summed to give the total catchment hydrograph.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="step6">7. Step 6 — Soakwell Hydraulic Routing</h2>
+
+<p>SoakSIM routes the runoff hydrograph through the soakwell system using a forward-stepping mass balance at each computational timestep, consistent with the principles of the Stormwater Management Manual for WA (Argue, 2004).</p>
+
+<div class="card">
+  <h4>Mass Balance Equation</h4>
+  $$S(t+\Delta t) = S(t) + Q_{\text{in}} \cdot \Delta t - Q_{\text{infil}} \cdot \Delta t$$
+  <p>where $S$ = stored volume (m³), $Q_{\text{in}}$ = inflow rate (m³/s), $Q_{\text{infil}}$ = infiltration rate (m³/s).</p>
+</div>
+
+<h3>7.1 Soakwell Geometry</h3>
+<p>Concrete soakwells are modelled as hollow cylinders (void ratio = 1.0):</p>
+$$V_{\text{storage}} = \frac{\pi}{4}\,d^2\,H$$
+<p>where $d$ = internal diameter (m) and $H$ = internal height (m).</p>
+
+<h4>Base Infiltration Area</h4>
+<p>The base slab is not fully open — it has a circular hole whose diameter is <strong>300 mm less</strong> than the soakwell diameter:</p>
+$$A_{\text{base}} = \frac{\pi}{4}\,(d - 0.3)^2$$
+
+<h4>Side-Wall Infiltration Area (Louvres)</h4>
+<p>Side-wall infiltration occurs through <strong>louvre slots</strong> cast into the concrete (not the full wall surface). Each louvre is <strong>150 mm wide × 50 mm high</strong>, arranged on a <strong>300 mm × 300 mm grid</strong>. The open-area ratio of the wall is:</p>
+$$\alpha = \frac{150 \times 50}{300 \times 300} = \frac{7500}{90000} \approx 8.33\%$$
+<p>The effective side infiltration area is:</p>
+$$A_{\text{side}} = \alpha \times \pi\,d\,H = 0.0833 \times \pi\,d\,H$$
+
+<div class="note">
+  <strong>Example (1200 × 1200 mm):</strong><br>
+  Base opening: $\pi/4 \times (1.2 - 0.3)^2 = 0.636$ m²<br>
+  Full wall area: $\pi \times 1.2 \times 1.2 = 4.524$ m²<br>
+  Effective louvre area: $4.524 \times 0.0833 = 0.377$ m²<br>
+  Total infiltration area: $0.636 + 0.377 = 1.013$ m² (vs 5.655 m² if the full wall were open)
+</div>
+
+<h3>7.2 Depth-Dependent Infiltration</h3>
+<p>Infiltration at each timestep depends on the water depth within the soakwell:</p>
+
+$$Q_{\text{infil}} = k_h \cdot R_f \cdot A_{\text{active}}$$
+
+<p>where:</p>
+<ul>
+  <li>$k_h$ = soil saturated hydraulic conductivity (m/s), derived from the user's infiltration rate input</li>
+  <li>$R_f$ = infiltration reduction factor (default 0.8, accounts for clogging/ageing)</li>
+  <li>$A_{\text{active}}$ = active infiltration area, which varies with depth:</li>
+</ul>
+
+$$A_{\text{active}} = A_{\text{base}} + A_{\text{side}} \times \frac{h}{H}$$
+
+<p>where $h$ = current water depth. When the soakwell is full, $h = H$, so the entire side wall is active. When nearly empty, only the base and a small side wall portion contribute.</p>
+
+<h3>7.3 Spill / Surface Ponding</h3>
+<p>If stored water exceeds the soakwell capacity ($S > V_{\text{storage}}$), the excess ponds on the surface with a much larger plan area ($\approx 50 \times A_{\text{base}}$). All side walls remain fully submerged, and water drains back into the soakwell as it empties.</p>
+
+<h3>7.4 Post-Storm Draining</h3>
+<p>After the storm ends ($Q_{\text{in}} = 0$), the mass balance continues until $S \approx 0$. The total time from storm end to empty is the <strong>numerical drain time</strong>.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="step7">8. Step 7 — Argue (2004) Emptying Time Formula</h2>
+
+<p>The analytical emptying time for a circular soakwell (Argue, 2004; Stormwater Management Manual for WA) is:</p>
+
+<div class="card">
+$$T = -\frac{4.6\,d}{4\,k_h} \;\log_{10}\!\left(\frac{d/4}{H + d/4}\right)$$
+</div>
+
+<p>where:</p>
+<ul>
+  <li>$T$ = emptying time (seconds)</li>
+  <li>$d$ = well diameter (m)</li>
+  <li>$H$ = well height (m)</li>
+  <li>$k_h$ = soil saturated hydraulic conductivity (m/s)</li>
+</ul>
+
+<div class="note">
+  <strong>Note:</strong> This formula assumes the soakwell is full at the start of draining, drains by infiltration and percolation only (no piped outflow), and that $d \approx H$. SoakSIM's numerical routing (Step 6) is more general — it handles time-varying inflow, partial fill, depth-dependent infiltration, and arbitrary d × H ratios. The Argue formula serves as an analytical cross-check.
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="step8">9. Step 8 — Soil Moderation Factor (U)</h2>
+
+<p>In soakwell sizing, a <strong>Soil Moderation Factor</strong> ($U$) is applied to field-measured hydraulic conductivity to account for the difference between point-scale test results and actual areal conductivity (Engineers Australia, 2006).</p>
+
+<table>
+  <tr><th>Soil Type</th><th>Factor $U$</th><th>Rationale</th></tr>
+  <tr><td>Sand</td><td>0.5</td><td>Field tests <em>overestimate</em> areal $k_h$ → halve the tested rate</td></tr>
+  <tr><td>Sandy Clay</td><td>1.0</td><td>No correction needed</td></tr>
+  <tr><td>Medium / Heavy Clay</td><td>2.0</td><td>Field tests <em>underestimate</em> areal $k_h$ → double the tested rate</td></tr>
+</table>
+
+<p>SoakSIM applies this factor as the <em>Soil Moderation Factor</em> input. The user-entered infiltration rate should be the raw field-measured rate; SoakSIM then applies $U$ internally.</p>
+
+<div class="note">
+  <strong>Exception:</strong> If the design uses a calculated long-term or "lifespan" hydraulic conductivity rather than a raw field test value, $U = 1.0$ may be applied instead.
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="step9">10. Step 9 — ARR Probability-Neutral Pattern Selection</h2>
+
+<p>ARR 2019 provides 10 temporal patterns per duration. To avoid arbitrarily selecting the worst or best case, SoakSIM adopts the <strong>probability-neutral</strong> approach:</p>
+
+<div class="card">
+  <h4>Procedure (per storm duration)</h4>
+  <ol>
+    <li><strong>Route all 10 patterns</strong> through the soakwell mass balance</li>
+    <li><strong>Rank</strong> by peak soakwell depth (deepest first)</li>
+    <li><strong>Adopt the <em>N</em>th highest</strong>, where $N$ = the pattern rank parameter (default 4)</li>
+  </ol>
+</div>
+
+<p>This ensures the design is based on a pattern that is neither the most extreme nor the most benign — consistent with ARR guidance that no individual temporal pattern has a defined probability.</p>
+
+<p>The <strong>critical duration</strong> is then the adopted pattern (across all durations) that produces the greatest peak soakwell depth.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="step10">11. Step 10 — Auto-Design Optimiser</h2>
+
+<p>When the solver mode is enabled, SoakSIM automatically determines the number and size of soakwells required. The procedure is:</p>
+
+<h3>11.1 Initial Estimate (Net-Storage Formula)</h3>
+<p>For each candidate soakwell size, compute an initial unit count:</p>
+
+$$n = \left\lceil \frac{\forall}{V_{\text{sw}} / U + I_{\text{unit}} \cdot D} \right\rceil$$
+
+<p>where:</p>
+<ul>
+  <li>$\forall$ = runoff volume (m³) from the critical storm</li>
+  <li>$V_{\text{sw}}$ = storage volume per soakwell (m³)</li>
+  <li>$U$ = soil moderation factor</li>
+  <li>$I_{\text{unit}}$ = infiltration rate per soakwell (m³/hr)</li>
+  <li>$D$ = storm duration (hours)</li>
+</ul>
+
+<h3>11.2 Routing Verification</h3>
+<p>The formula estimate is then verified by routing:</p>
+<ol>
+  <li>Route all temporal patterns through $n$ soakwells</li>
+  <li>Apply ARR probability-neutral selection (Section 10)</li>
+  <li>If the adopted pattern <strong>spills</strong> → increment $n$ and repeat</li>
+  <li>Stop when no adopted pattern spills, or $n$ reaches the maximum (default 50)</li>
+</ol>
+
+<h3>11.3 Solver Modes</h3>
+<table>
+  <tr><th>Mode</th><th>Description</th></tr>
+  <tr><td><strong>Fewest units</strong></td><td>Minimise total soakwell count across all catalogue sizes</td></tr>
+  <tr><td><strong>Fixed height</strong></td><td>Only consider sizes up to a specified height</td></tr>
+  <tr><td><strong>Fixed diameter</strong></td><td>Only consider sizes up to a specified diameter</td></tr>
+</table>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="worked">12. Worked Example</h2>
+
+<div class="card">
+<h3>Problem Statement</h3>
+<p>Size a soakwell system for a <strong>500 m² (0.05 ha)</strong> residential roof in <strong>Perth</strong> (−31.95°, 115.86°) for the <strong>5% AEP (20-year ARI), 60-minute storm</strong> duration. The site has <strong>sandy soil</strong> with a field-tested hydraulic conductivity of <strong>1.2 m/day</strong> (50 mm/hr).</p>
+</div>
+
+<h3>Step A — Design Rainfall</h3>
+<p>From BOM IFD for Perth at 5% AEP, 60-minute duration:</p>
+$$P = 33.5 \;\text{mm}$$
+
+<h3>Step B — Temporal Pattern &amp; Hyetograph</h3>
+<p>ARR provides 10 temporal patterns for the 60-min duration. One example pattern (cumulative fractions at 5-minute intervals) might be:</p>
+<p style="margin-left:1rem"><code>[0.03, 0.07, 0.12, 0.18, 0.28, 0.52, 0.72, 0.84, 0.92, 0.96, 0.99, 1.00]</code></p>
+<p>The incremental depths (mm per 5-min interval) are these fractions multiplied by 33.5 mm, then differenced:</p>
+<p style="margin-left:1rem"><code>[1.0, 1.3, 1.7, 2.0, 3.4, 8.0, 6.7, 4.0, 2.7, 1.3, 1.0, 0.3]</code></p>
+<p>Note the characteristic "burst" in the middle of the storm.</p>
+
+<h3>Step C — Rainfall Losses</h3>
+<p>For a fully paved (roof) catchment with depression storage = 1 mm:</p>
+<ul>
+  <li>First 1 mm of rainfall fills depressions → no runoff</li>
+  <li>Remaining 32.5 mm becomes excess rainfall</li>
+  <li>No Horton infiltration (paved surface)</li>
+</ul>
+
+<h3>Step D — Runoff Volume</h3>
+<p>Total runoff volume (time-area routing):</p>
+$$V = \frac{A \times \text{excess depth}}{1000} = \frac{500 \times 32.5}{1000} = 16.25 \;\text{m}^3$$
+
+<p>The time-area convolution distributes this over the 60-minute storm producing a hydrograph with a peak of approximately <strong>0.0045 m³/s</strong>.</p>
+
+<h3>Step E — Soakwell Sizing (Argue Formula Cross-Check)</h3>
+<p>Using the Argue (2004) sizing formula with a 1200 × 1200 mm soakwell ($d = H = 1.2$ m):</p>
+
+<p>Convert $k_h$: $1.2$ m/day $= 1.389 \times 10^{-5}$ m/s</p>
+<p>Convert $\tau$: storm time-base $= 60$ min</p>
+<p>Soil moderation factor for sand: $U = 0.5$</p>
+
+$$d_{\text{required}} = \sqrt{\frac{\forall}{\frac{\pi}{4}\left(H + 120 \cdot k_h \cdot \tau \cdot U\right)}}$$
+
+$$d_{\text{required}} = \sqrt{\frac{16.25}{\frac{\pi}{4}\left(1.2 + 120 \times 1.389 \times 10^{-5} \times 60 \times 0.5\right)}}$$
+
+$$= \sqrt{\frac{16.25}{0.785 \times (1.2 + 0.05)}} = \sqrt{\frac{16.25}{0.981}} = \sqrt{16.56} = 4.07 \;\text{m}$$
+
+<p>This means a single soakwell of diameter 4.07 m would be needed — far larger than standard products. Hence, <strong>multiple standard soakwells</strong> are required.</p>
+
+<h3>Step F — SoakSIM Numerical Design</h3>
+<p>SoakSIM's optimiser selects from the catalogue. For 1200 × 1200 mm soakwells:</p>
+<ul>
+  <li>Storage per unit: $V_{\text{sw}} = \frac{\pi}{4}(1.2)^2 \times 1.2 = 1.357$ m³</li>
+  <li>Infiltration area: $A_{\text{base}} = 1.131$ m², $A_{\text{side}} = 4.524$ m²</li>
+  <li>Infiltration rate per unit: $k_h \times R_f \times (A_{\text{base}} + A_{\text{side}}) = 1.389 \times 10^{-5} \times 0.8 \times 5.655 = 6.28 \times 10^{-5}$ m³/s $= 0.226$ m³/hr</li>
+</ul>
+
+<p>Initial estimate (net-storage formula):</p>
+$$n = \left\lceil \frac{16.25}{1.357/0.5 + 0.226 \times 1.0} \right\rceil = \left\lceil \frac{16.25}{2.714 + 0.226} \right\rceil = \left\lceil \frac{16.25}{2.940} \right\rceil = \lceil 5.53 \rceil = 6$$
+
+<p>SoakSIM then routes all 10 temporal patterns through 6 × 1200 × 1200 soakwells, ranks by peak depth, and adopts the 4th highest. If any adopted pattern spills, it increments to 7, then 8, etc. until no spill occurs.</p>
+
+<h3>Step G — Emptying Time Check (Argue Formula)</h3>
+<p>For a single 1200 × 1200 soakwell, check the emptying time:</p>
+
+$$T = -\frac{4.6 \times 1.2}{4 \times 1.389 \times 10^{-5}} \;\log_{10}\!\left(\frac{1.2/4}{1.2 + 1.2/4}\right)$$
+
+$$T = -\frac{5.52}{5.556 \times 10^{-5}} \times \log_{10}\!\left(\frac{0.3}{1.5}\right) = -99{,}352 \times (-0.699)$$
+
+$$T = 69{,}447 \;\text{s} = 19.3 \;\text{hours}$$
+
+<div class="note">
+  <strong>Result:</strong> Each soakwell empties in approximately <strong>19.3 hours</strong>, which is within the 24-hour drain-time criterion for a 5% AEP design.
+</div>
+
+<h3>Step H — Summary</h3>
+<table>
+  <tr><th>Parameter</th><th>Value</th></tr>
+  <tr><td>Design storm</td><td>5% AEP, 60-minute duration</td></tr>
+  <tr><td>Catchment area</td><td>500 m² (0.05 ha), 100% paved</td></tr>
+  <tr><td>Design rainfall depth</td><td>33.5 mm</td></tr>
+  <tr><td>Runoff volume</td><td>~16.25 m³</td></tr>
+  <tr><td>Soakwell size</td><td>1200 × 1200 mm</td></tr>
+  <tr><td>Number required (formula)</td><td>6</td></tr>
+  <tr><td>Total storage</td><td>6 × 1.357 = 8.14 m³</td></tr>
+  <tr><td>Infiltration credit (1 hr)</td><td>6 × 0.226 = 1.36 m³</td></tr>
+  <tr><td>Argue drain time</td><td>~19.3 hours (&lt; 24 hr ✓)</td></tr>
+  <tr><td>Soil moderation factor</td><td>0.5 (sand)</td></tr>
+</table>
+
+<div class="warn">
+  <strong>Important:</strong> The Argue sizing formula assumes average rainfall intensity and a single runoff coefficient. SoakSIM's numerical routing with ILSAX losses and ARR temporal patterns is more rigorous — the final soakwell count may differ from the simple formula estimate because temporal patterns distribute rainfall non-uniformly, creating burst intensities that exceed the average.
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<h2 id="references">13. References</h2>
+
+<ol>
+  <li>Argue, J.R. (2004). <em>Water Sensitive Urban Design: Basic Procedures for 'Source Control' of Stormwater</em>. Urban Water Resources Centre, University of South Australia.</li>
+  <li>Ball, J., Babister, M., Nathan, R., Weeks, W., Weinmann, E., Retallick, M. &amp; Testoni, I. (Eds.) (2019). <em>Australian Rainfall and Runoff: A Guide to Flood Estimation</em>. Commonwealth of Australia.</li>
+  <li>Bureau of Meteorology (2016). <em>Revised Intensity-Frequency-Duration Design Rainfall Data System</em>. Commonwealth of Australia.</li>
+  <li>Engineers Australia (2006). <em>Australian Runoff Quality</em>. Engineers Australia, Canberra.</li>
+  <li>O'Loughlin, G. &amp; Stack, B. (2018). <em>ILSAX Reference — Version 2018.06</em>. Watercom Pty Ltd.</li>
+  <li>Ragan, R.M. &amp; Duru, J.O. (1972). 'Kinematic wave nomograph for times of concentration'. <em>Journal of the Hydraulics Division</em>, ASCE, 98(HY10), pp. 1765–1771.</li>
+  <li>Stormwater Management Manual for Western Australia (2004). Department of Water, Government of Western Australia.</li>
+  <li>Watson, M.D. (1981). 'Non-iterative Horton's equation'. <em>Civil Engineering Transactions</em>, Institution of Engineers Australia, pp. 240–243.</li>
+</ol>
+
+<p style="margin-top:3rem;text-align:center;color:var(--muted);font-size:.8rem;">
+  SoakSIM v1.0 — &copy; 2024–2026 <a href="https://innealta.com.au" style="color:var(--primary)">Innealta Engineering</a>
+</p>
+
+</div>
+</body>
+</html>

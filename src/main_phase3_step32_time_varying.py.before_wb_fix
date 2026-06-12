@@ -1,0 +1,2736 @@
+#!/usr/bin/env python3
+"""
+BASIN INFILTRATION SIMULATOR (BaSIM)
+Phase 3, Step 3.2: Time-Varying Inputs Integration
+
+This module implements time-varying storm inputs using TS1 file data
+integrated with the LAK (Lake) package for realistic storm event modeling.
+
+Features:
+- TS1 file reading and processing
+- Time-varying inflow rates to LAK package
+- Storm hydrograph integration
+- Dynamic lake level modeling
+- Enhanced convergence monitoring
+
+Author: BaSIM Development Team
+Date: August 2025
+"""
+
+import os
+import sys
+import numpy as np
+# Avoid importing interactive pyplot at module import time; use Agg if needed
+try:
+    import matplotlib as _mpl
+    _mpl.use('Agg')
+    import matplotlib.pyplot as plt
+except Exception:
+    plt = None
+import pandas as pd
+from datetime import datetime, timedelta
+from pathlib import Path
+import flopy
+
+# Add src directory to path for imports
+src_dir = Path(__file__).parent
+sys.path.append(str(src_dir))
+
+# Import BaSIM modules
+from utils.grid_builder import create_adaptive_refined_grid, visualize_grid_refinement
+from utils.lak_utils import BasinGeometry, generate_tapered_laktab, write_laktab_file, suggest_domain_factor
+from utils.visualization import BasinVisualizationSuite
+from utils.mf6_locator import find_mf6_exe
+
+def validate_basin_configuration(basin_geom, initial_groundwater_head, bottom_elev: float | None):
+    """Validate basin vs aquifer setup and return warnings list.
+
+    - Warn if basin floor is too close to groundwater
+    - Warn if basin depth is large relative to aquifer thickness
+    - Warn if side-slope is steep
+    - Warn if basin footprint is tiny (grid resolution issues)
+    """
+    warnings: list[str] = []
+    try:
+        # Floor vs GW
+        if basin_geom.floor_elev <= float(initial_groundwater_head) + 0.3:
+            warnings.append(
+                f"Basin floor ({basin_geom.floor_elev:.2f} m) is close to groundwater ({float(initial_groundwater_head):.2f} m)."
+            )
+        # Depth vs aquifer thickness
+        if bottom_elev is not None:
+            try:
+                basin_top = float(basin_geom.floor_elev + basin_geom.max_depth)
+                aquifer_thk = float(basin_top - float(bottom_elev))
+                if aquifer_thk > 0 and float(basin_geom.max_depth) > 0.4 * aquifer_thk:
+                    warnings.append(
+                        f"Basin depth ({float(basin_geom.max_depth):.2f} m) is >40% of aquifer thickness ({aquifer_thk:.2f} m)."
+                    )
+            except Exception:
+                pass
+        # Side slope
+        if float(basin_geom.side_slope_hv) < 1.5:
+            warnings.append(f"Steep side slope ({float(basin_geom.side_slope_hv):.1f}:1) may reduce stability.")
+        # Small footprint
+        area = float(basin_geom.length_floor) * float(basin_geom.width_floor)
+        if area < 100.0:
+            warnings.append(f"Small basin floor area ({area:.0f} m²) may cause numerical sensitivity.")
+    except Exception:
+        pass
+    return warnings
+
+def visualize_results(model_dir, model_name, nrow, ncol, delr, delc):
+    """Create a stage time series plot from OBS CSV and max groundwater head contours from HDS."""
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from pathlib import Path
+    import flopy.utils.binaryfile as bf
+
+    model_path = Path(model_dir)
+
+    # Try to read model metadata for crest elevation and spill settings
+    crest_elev = None
+    try:
+        meta = None
+        meta_path = model_path / 'model_meta.json'
+        if meta_path.exists():
+            import json as _json
+            with open(meta_path, 'r') as _fp:
+                meta = _json.load(_fp)
+        if meta:
+            crest_elev = float(meta.get('crest_elev_mAHD'))
+    except Exception:
+        crest_elev = None
+
+    # 1) Plot lake stage time series from CSV produced by OBS6
+    obs_csv = model_path / f"{model_name}_lak_stage.csv"
+    spill_detected = False
+    spill_amount_max = 0.0
+    if obs_csv.exists():
+        try:
+            df = pd.read_csv(obs_csv)
+            # Expected columns: time, lak_stage
+            # MF6 UTLOBS6 CSV header often: time, lak_stage
+            time = df.iloc[:, 0]
+            stage = df.iloc[:, 1]
+            plt.figure(figsize=(10, 5))
+            plt.plot(time, stage, 'b-', lw=2, label='Stage (current)')
+            # Spill annotation if crest is known
+            if crest_elev is not None:
+                try:
+                    plt.axhline(crest_elev, color='tomato', ls='--', lw=1.5, label='Crest')
+                    y_max = np.nanmax(stage.values.astype(float))
+                    if y_max > crest_elev + 1e-6:
+                        spill_detected = True
+                        spill_amount_max = float(y_max - crest_elev)
+                        plt.fill_between(time.values, crest_elev, y_max, color='red', alpha=0.08)
+                except Exception:
+                    pass
+            prev = model_path / f"{model_name}_lak_stage_prev.csv"
+            if prev.exists():
+                try:
+                    dfp = pd.read_csv(prev)
+                    plt.plot(dfp.iloc[:,0], dfp.iloc[:,1], 'r--', lw=1.5, label='Stage (previous)')
+                except Exception:
+                    pass
+            plt.xlabel('Time (days)')
+            plt.ylabel('Lake Stage (m)')
+            ttl = 'Basin Stage Time Series (LAK OBS)'
+            if spill_detected:
+                # Avoid emoji to prevent matplotlib font glyph warnings
+                ttl += '  SPILL'
+            plt.title(ttl)
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+            out_png = model_path / 'stage_timeseries.png'
+            plt.savefig(out_png, dpi=200, bbox_inches='tight')
+            plt.close()
+            print(f"   📈 Saved stage time series: {out_png.name}")
+        except Exception as e:
+            print(f"   ⚠️ Could not parse LAK OBS CSV: {e}")
+    else:
+        print(f"   ⚠️ LAK OBS CSV not found: {obs_csv.name}")
+
+    # 1b) Combined inflow (m3/s) and stage (m) overlay, if inflow CSV exists
+    inflow_csv = model_path / 'inflow_timeseries.csv'
+    if obs_csv.exists() and inflow_csv.exists():
+        try:
+            dfi = pd.read_csv(inflow_csv)
+            dfs = pd.read_csv(obs_csv)
+            ti = dfi['time_days'].values
+            qi = dfi['flow_m3s'].values
+            ts = dfs.iloc[:, 0].values
+            stg = dfs.iloc[:, 1].values
+            plt.figure(figsize=(10, 5))
+            ax1 = plt.gca()
+            l1 = ax1.plot(ts, stg, 'b-', lw=2, label='Stage (m)')
+            ax1.set_xlabel('Time (days)')
+            ax1.set_ylabel('Stage (m)', color='b')
+            ax1.tick_params(axis='y', labelcolor='b')
+            ax2 = ax1.twinx()
+            l2 = ax2.plot(ti, qi, 'r--', lw=1.8, label='Inflow (m3/s)')
+            ax2.set_ylabel('Inflow (m3/s)', color='r')
+            ax2.tick_params(axis='y', labelcolor='r')
+            # Crest and spill shading
+            if crest_elev is not None:
+                try:
+                    ax1.axhline(crest_elev, color='tomato', ls='--', lw=1.5, label='Crest')
+                    y_max = float(np.nanmax(stg.astype(float)))
+                    if y_max > crest_elev + 1e-6:
+                        spill_detected = True
+                        spill_amount_max = max(spill_amount_max, y_max - crest_elev)
+                        ax1.fill_between(ts, crest_elev, y_max, color='red', alpha=0.08)
+                except Exception:
+                    pass
+            # build a combined legend
+            lines = l1 + l2
+            labels = [l.get_label() for l in lines]
+            ax1.legend(lines, labels, loc='upper right')
+            ttl = 'Inflow vs Stage'
+            if spill_detected:
+                # Avoid emoji to prevent matplotlib font glyph warnings
+                ttl += '  SPILL'
+            plt.title(ttl)
+            plt.grid(True, alpha=0.3)
+            out_png = model_path / 'inflow_stage_overlay.png'
+            plt.savefig(out_png, dpi=200, bbox_inches='tight')
+            plt.close()
+            print(f"   📊 Saved inflow+stage overlay: {out_png.name}")
+        except Exception as e:
+            print(f"   ⚠️ Could not generate overlay plot: {e}")
+
+    # 1c) Cumulative inflow vs storage vs cumulative infiltrated; and effective infiltration rate
+    try:
+        laktab = model_path / f"{model_name}.laktab"
+        if obs_csv.exists() and inflow_csv.exists() and laktab.exists():
+            # Read stage time series (assumed time in days, stage in m AHD)
+            dfs = pd.read_csv(obs_csv)
+            t_stage_days = dfs.iloc[:, 0].values.astype(float)
+            stage_m = dfs.iloc[:, 1].values.astype(float)
+
+            # Read inflow time series (time_days, flow_m3s)
+            dfi = pd.read_csv(inflow_csv)
+            tin_days = dfi['time_days'].values.astype(float)
+            q_m3s = dfi['flow_m3s'].values.astype(float)
+
+            # Parse LAKTAB stage-volume table
+            stg_tab, vol_tab = [], []
+            try:
+                in_table = False
+                with open(laktab, 'r', encoding='utf-8', errors='ignore') as tf:
+                    for line in tf:
+                        s = line.strip()
+                        if not s or s.startswith('#'):
+                            continue
+                        if s.upper().startswith('BEGIN TABLE'):
+                            in_table = True; continue
+                        if s.upper().startswith('END TABLE'):
+                            break
+                        if in_table:
+                            parts = s.split()
+                            if len(parts) >= 2:
+                                try:
+                                    stg = float(parts[0]); vol = float(parts[1])
+                                    stg_tab.append(stg); vol_tab.append(max(0.0, vol))
+                                except Exception:
+                                    pass
+            except Exception:
+                stg_tab, vol_tab = [], []
+
+            if len(stg_tab) >= 2 and len(t_stage_days) >= 2 and len(tin_days) >= 2:
+                import numpy as np
+                # Use SciPy's cumulative trapezoid for robust cumulative inflow
+                try:
+                    from scipy.integrate import cumulative_trapezoid as _cumtrapz
+                except Exception:
+                    _cumtrapz = None
+                # Time vectors in seconds for derivatives/integration
+                t_in_sec = tin_days * 86400.0
+                # Cumulative inflow at inflow sample times (trapz)
+                if _cumtrapz is not None:
+                    cum_inflow_m3 = _cumtrapz(q_m3s, t_in_sec, initial=0.0)
+                else:
+                    # Fallback: manual cumulative trapezoid
+                    dt = np.diff(t_in_sec)
+                    qm = 0.5 * (q_m3s[:-1] + q_m3s[1:])
+                    cum = np.concatenate([[0.0], np.cumsum(qm * dt)])
+                    cum_inflow_m3 = cum
+                # Interpolate cumulative inflow and inflow rate to stage time grid
+                from numpy import interp as _interp
+                t_stage_sec = t_stage_days * 86400.0
+                cum_inflow_at_stage = _interp(t_stage_sec, t_in_sec, cum_inflow_m3, left=0.0, right=cum_inflow_m3[-1])
+                inflow_rate_at_stage = _interp(t_stage_sec, t_in_sec, q_m3s, left=q_m3s[0], right=q_m3s[-1])
+
+                # Storage volume from stage via LAKTAB (linear interpolation)
+                storage_m3 = _interp(stage_m, np.array(stg_tab, float), np.array(vol_tab, float), left=0.0, right=float(vol_tab[-1]))
+
+                # Water-balance consistent cumulative infiltration (m3):
+                # CUM_INFILT = cum_inflow - storage  (no spill, S0 assumed 0)
+                # Enforce non-negativity and monotonicity; cap at cumulative inflow.
+                cum_infil_m3 = np.maximum(0.0, cum_inflow_at_stage - storage_m3)
+                try:
+                    cum_infil_m3 = np.maximum.accumulate(cum_infil_m3)
+                except Exception:
+                    pass
+                try:
+                    cum_infil_m3 = np.minimum(cum_infil_m3, cum_inflow_at_stage)
+                except Exception:
+                    pass
+
+                # Effective infiltration rate (m3/s) as the time derivative of the bounded cumulative infiltration
+                infil_rate_m3s = np.gradient(cum_infil_m3, t_stage_sec, edge_order=2)
+                infil_rate_m3s = np.maximum(0.0, infil_rate_m3s)
+
+                # Save a CSV for the water balance time series
+                try:
+                    wb_csv = model_path / 'water_balance_timeseries.csv'
+                    pd.DataFrame({
+                        'time_days': t_stage_days,
+                        'time_hours': t_stage_days * 24.0,
+                        'stage_m': stage_m,
+                        'inflow_m3s': inflow_rate_at_stage,
+                        'storage_m3': storage_m3,
+                        'cum_inflow_m3': cum_inflow_at_stage,
+                        'cum_infiltrated_m3': cum_infil_m3,
+                        'effective_infiltration_m3s': infil_rate_m3s,
+                    }).to_csv(wb_csv, index=False)
+                    print(f"   💾 Saved water balance CSV: {wb_csv.name}")
+                except Exception:
+                    pass
+
+                # Time axis in hours for plotting
+                th = t_stage_days * 24.0
+                # (User requested) Remove cumulative balance plot; keep CSV above
+
+                # Plot effective infiltration rate
+                plt.figure(figsize=(10, 5))
+                plt.plot(th, infil_rate_m3s, color='#2ca02c', lw=2.0, label='Effective Infiltration (m³/s)')
+                plt.xlabel('Time (hours)')
+                plt.ylabel('Rate (m³/s)')
+                plt.title('Effective Infiltration Rate')
+                plt.grid(True, alpha=0.3)
+                plt.legend()
+                out_png2 = model_path / 'effective_infiltration_rate.png'
+                plt.savefig(out_png2, dpi=200, bbox_inches='tight')
+                plt.close()
+                print(f"   📈 Saved effective infiltration rate plot: {out_png2.name}")
+    except Exception as e:
+        print(f"   ⚠️ Could not generate water balance plots: {e}")
+
+    # 2) Compute and plot max groundwater head RISE (relative to baseline) over time
+    hds_file = model_path / f"{model_name}.hds"
+    if hds_file.exists():
+        try:
+            hds = bf.HeadFile(str(hds_file))
+            times = hds.get_times()
+            # Choose layer with most valid heads at first timestep
+            data0 = hds.get_data(totim=times[0])
+            best_layer = 0
+            if data0.ndim == 3:
+                counts = []
+                for k in range(data0.shape[0]):
+                    a0 = data0[k].astype(float)
+                    a0[a0 <= -1e29] = np.nan
+                    counts.append(np.count_nonzero(~np.isnan(a0)))
+                if len(counts) > 0:
+                    best_layer = int(np.argmax(counts))
+
+            # Accumulate max head per cell across all times for selected layer
+            max_head = None
+            baseline = None
+            for idx, t in enumerate(times):
+                data = hds.get_data(totim=t)  # shape (nlay, nrow, ncol)
+                layer_arr = data[best_layer]
+                if idx == 0:
+                    baseline = layer_arr.copy()
+                if max_head is None:
+                    max_head = layer_arr.copy()
+                else:
+                    max_head = np.maximum(max_head, layer_arr)
+
+            # Compute head rise (mounding) relative to baseline at first time
+            # Treat sentinel very negative heads as NaN and clip negative rises to 0
+            # Build coordinate arrays; delr/delc may be scalars or 1D arrays
+            delr_arr = np.array(delr) if hasattr(delr, '__len__') else np.full(ncol, delr)
+            delc_arr = np.array(delc) if hasattr(delc, '__len__') else np.full(nrow, delc)
+            x_edges = np.concatenate(([0.0], np.cumsum(delr_arr)))
+            y_edges = np.concatenate(([0.0], np.cumsum(delc_arr)))
+            xc = (x_edges[:-1] + x_edges[1:]) / 2.0  # length ncol
+            yc = (y_edges[:-1] + y_edges[1:]) / 2.0  # length nrow
+            XC, YC = np.meshgrid(xc, yc)
+
+            plt.figure(figsize=(8, 7))
+            # Ensure arrays are (nrow, ncol)
+            arr_max = np.array(max_head)
+            arr_base = np.array(baseline)
+            arr_max = np.where(arr_max <= -1e29, np.nan, arr_max)
+            arr_base = np.where(arr_base <= -1e29, np.nan, arr_base)
+            mound = arr_max - arr_base
+            mound = np.where(np.isnan(mound), np.nan, np.maximum(0.0, mound))
+            # Flip vertically so row 0 (top) maps to highest Y
+            arr_plot = np.flipud(mound)
+            # Choose robust color levels up to 95th percentile to avoid outliers
+            try:
+                vmax = float(np.nanpercentile(arr_plot, 95))
+                if not np.isfinite(vmax) or vmax <= 0:
+                    vmax = float(np.nanmax(arr_plot)) if np.nanmax(arr_plot) > 0 else 0.1
+            except Exception:
+                vmax = float(np.nanmax(arr_plot)) if np.nanmax(arr_plot) > 0 else 0.1
+            levels = np.linspace(0.0, vmax, 20)
+            cf = plt.contourf(XC, YC, arr_plot, levels=levels, cmap='viridis')
+            cbar = plt.colorbar(cf)
+            cbar.set_label('Max head rise (m)')
+            plt.gca().set_aspect('equal', adjustable='box')
+            plt.xlabel('x (m)')
+            plt.ylabel('y (m)')
+            plt.title('Max Groundwater Head Rise (selected wet layer)')
+            out_png2 = model_path / 'max_head_contours.png'
+            plt.savefig(out_png2, dpi=200, bbox_inches='tight')
+            plt.close()
+            print(f"   🗺️ Saved max head contours: {out_png2.name}")
+        except Exception as e:
+            print(f"   ⚠️ Could not generate head contours: {e}")
+    else:
+        print(f"   ⚠️ Head file not found: {hds_file.name}")
+
+    # 3) Update combined stages overlay at scenario level (all runs under outputs/)
+    try:
+        model_path = Path(model_dir)
+        scen_outputs = model_path.parent  # outputs/<short>
+        scen_root = scen_outputs         # outputs/
+        # Collect all stage CSVs under outputs/*
+        stage_csvs = list(scen_root.glob("*/" + "*lak_stage.csv"))
+        if len(stage_csvs) >= 1:
+            plt.figure(figsize=(10, 6))
+            for csv in stage_csvs:
+                try:
+                    df = pd.read_csv(csv)
+                    t = df.iloc[:, 0].values.astype(float)
+                    y = df.iloc[:, 1].values.astype(float)
+                    label = csv.parent.name
+                    plt.plot(t, y, lw=1.6, label=label)
+                except Exception:
+                    continue
+            plt.xlabel('Time (days)')
+            plt.ylabel('Stage (m)')
+            plt.title('All Run Stages')
+            plt.grid(True, alpha=0.3)
+            try:
+                plt.legend(loc='best', fontsize=8, ncol=2)
+            except Exception:
+                pass
+            out_png = scen_root / 'combined_stages.png'
+            plt.savefig(out_png, dpi=200, bbox_inches='tight')
+            plt.close()
+            print(f"   🧩 Saved combined stages overlay: {out_png.name}")
+    except Exception:
+        pass
+
+    # If spill detected, write a warning file for GUI and users
+    try:
+        if spill_detected:
+            warn = model_path / 'spill_warning.txt'
+            msg = (
+                "Basin spill detected (stage exceeded crest).\n"
+                "Results beyond crest are for numerical stability only.\n"
+                "You cannot rely on these results for sizing/assessment.\n"
+            )
+            if crest_elev is not None:
+                msg += f"Crest elevation: {crest_elev:.3f} m AHD. Max exceedance: {spill_amount_max:.3f} m.\n"
+            with open(warn, 'w') as fp:
+                fp.write(msg)
+            print("   🌊 Spill warning written: spill_warning.txt")
+    except Exception:
+        pass
+
+def read_ts1_file(
+    ts1_path,
+    preferred_column: int | None = None,
+    sum_columns: bool = False,
+    _internal_fallback: bool = False,
+    allow_synthetic: bool = False,
+):
+    """
+    Parse a DRAINS TS1 file strictly per spec:
+      - Find the header row containing 'Time (...)'
+      - First column is time; remaining columns are hydrographs
+      - Time units are taken from '(min)' or '(hr/hour)'
+      - Flow units default to m3/s unless header says L/s
+      - Select exactly one data column (no implicit summing)
+
+    Returns: DataFrame with columns time_hours, flow_m3s, time_minutes, datetime.
+    """
+    print(f"📊 Reading TS1 storm data from: {os.path.basename(ts1_path)}")
+
+    # Optional env overrides for column selection
+    env_col = os.getenv("BASIM_TS1_COLUMN")
+    env_col_name = os.getenv("BASIM_TS1_COLUMN_NAME")
+    if preferred_column is None and env_col is not None:
+        try:
+            preferred_column = int(env_col)
+        except Exception:
+            preferred_column = None
+
+    try:
+        with open(ts1_path, 'r', encoding='utf-8', errors='ignore') as f:
+            raw_lines = [ln.strip() for ln in f.readlines()]
+
+        # Locate header line ('Time (...)', per TUFLOW TS1)
+        import re as _re
+        header_idx = None
+        for i, ln in enumerate(raw_lines):
+            if not ln:
+                continue
+            low = ln.lower()
+            # example: Time (min)
+            if _re.search(r"\btime\s*\(.*\)", low) and ("," in ln or "\t" in ln):
+                header_idx = i
+                break
+        if header_idx is None:
+            raise ValueError("TS1 header row not found (expected 'Time (...)' line)")
+
+        header_line = raw_lines[header_idx]
+        # Preserve empty header tokens (don't collapse)
+        header_tokens = [tok.strip() for tok in header_line.replace("\t", ",").split(",")]
+        col_names = [t for t in header_tokens]
+
+        # Data lines follow header
+        data_lines = [ln for ln in raw_lines[header_idx + 1:] if ln and not ln.strip().startswith('!')]
+
+        # Helper: split CSV preserving empty fields; fallback to whitespace if no commas
+        def _split_preserve(line: str) -> list[str]:
+            if "," in line or "\t" in line:
+                s = line.replace("\t", ",")
+                return [tok.strip() for tok in s.split(",")]
+            # fallback: whitespace tokens
+            return [tok for tok in line.split()]
+
+        # Parse into numeric matrix, treating empty tokens as NaN
+        rows = []
+        maxw_seen = 0
+        for ln in data_lines:
+            toks = _split_preserve(ln)
+            if not toks:
+                continue
+            nums = []
+            for t in toks:
+                tt = t.strip()
+                if tt == "":
+                    nums.append(np.nan)
+                else:
+                    try:
+                        nums.append(float(tt))
+                    except Exception:
+                        # Non-numeric in data row -> treat as NaN
+                        nums.append(np.nan)
+            if any(np.isfinite(x) for x in nums):
+                rows.append(nums)
+                if len(nums) > maxw_seen:
+                    maxw_seen = len(nums)
+
+        if not rows:
+            raise ValueError("No numeric content")
+
+        # Rectangularize to max width seen; keep NaNs for missing series values
+        import math
+        maxw = maxw_seen if maxw_seen > 0 else max(len(r) for r in rows)
+        for r in rows:
+            if len(r) < maxw:
+                r.extend([math.nan] * (maxw - len(r)))
+        arr = np.array(rows, dtype=float)
+
+        if arr.shape[1] < 2:
+            raise ValueError("TS1 contains only time values (no flow columns)")
+
+        # First column is time
+        time_vals = arr[:, 0]
+
+        # Sort by time and drop NaNs/duplicates
+        mask = np.isfinite(time_vals)
+        time_vals = time_vals[mask]
+        arr = arr[mask, :]
+        order = np.argsort(time_vals)
+        time_vals = time_vals[order]
+        arr = arr[order, :]
+
+        # Candidate data columns are 1..n-1 with >=3 finite values
+        data_cols = [c for c in range(1, arr.shape[1]) if np.count_nonzero(np.isfinite(arr[:, c])) >= 3]
+        if not data_cols:
+            raise ValueError("Found time column but no data columns")
+
+        # Time units (TS1 spec uses minutes by default)
+        header_lower = ",".join(header_tokens).lower()
+        time_is_minutes = ("(min" in header_lower) or ("min)" in header_lower)
+        time_is_hours = ("(hr" in header_lower) or ("(hour" in header_lower) or ("hours)" in header_lower)
+        if not time_is_minutes and not time_is_hours:
+            # Default to minutes per TUFLOW TS1
+            time_is_minutes = True
+
+        # Column selection: by name or index among data columns
+        selected_col = data_cols[0]
+        if env_col_name and col_names:
+            target = env_col_name.strip().lower()
+            for c in data_cols:
+                if c < len(col_names) and col_names[c].strip().lower() == target:
+                    selected_col = c
+                    break
+        if preferred_column is not None and 0 <= preferred_column < len(data_cols):
+            selected_col = data_cols[preferred_column]
+
+        # Flow values
+        flow_vals = arr[:, selected_col]
+
+        # Flow units from header
+        ht = ",".join(header_tokens).lower() if header_tokens else ""
+        flow_unit_factor = 1.0
+        if "l/s" in ht and "m3/s" not in ht:
+            flow_unit_factor = 0.001  # L/s -> m3/s
+
+        flow_m3s = np.where(np.isfinite(flow_vals), flow_vals, 0.0) * flow_unit_factor
+        time_hours = time_vals / 60.0 if time_is_minutes else time_vals
+
+        # Drop duplicate times (keep first occurrence)
+        t_unique, idx = np.unique(time_hours, return_index=True)
+        order_idx = np.sort(idx)
+        time_hours = time_hours[order_idx]
+        flow_m3s = flow_m3s[order_idx]
+
+        df = pd.DataFrame({"time_hours": time_hours, "flow_m3s": flow_m3s})
+        df["time_minutes"] = df["time_hours"] * 60.0
+        try:
+            step_min_med = max(1.0, float(pd.Series(df['time_minutes']).diff().dropna().median()))
+            freq = f"{int(round(step_min_med))}min"
+        except Exception:
+            freq = 'min'
+        df['datetime'] = pd.date_range(start='2025-01-01', periods=len(df), freq=freq)
+
+        print(f"   ✅ Loaded {len(df)} time steps")
+        print(f"   ⏰ Duration: {df['time_hours'].max():.2f} hours")
+        print(f"   🌊 Peak flow: {np.nanmax(df['flow_m3s'].values):.3f} m³/s")
+        try:
+            t_sec = df['time_hours'].values * 3600.0
+            q = df['flow_m3s'].values
+            vol = float(np.trapezoid(q, t_sec)) if hasattr(np, 'trapezoid') else float(np.trapz(q, t_sec))
+            print(f"   💧 Total volume: {vol:.2f} m³")
+        except Exception:
+            pass
+
+        return df
+
+    except Exception as e:
+        # Attempt companion file only for missing data content
+        msg = str(e)
+        print(f"   ❌ Error reading TS1 file: {e}")
+        try:
+            if not _internal_fallback and ("only time" in msg.lower() or "no data columns" in msg.lower() or "no numeric content" in msg.lower()):
+                comp = find_companion_ts1(ts1_path)
+                if comp:
+                    print(f"   🔎 Found companion TS1 with data: {os.path.basename(comp)}")
+                    return read_ts1_file(comp, preferred_column=preferred_column, sum_columns=sum_columns, _internal_fallback=True)
+        except Exception as e2:
+            print(f"   ⚠️ Companion TS1 search failed: {e2}")
+        if allow_synthetic:
+            print("   🔄 Generating synthetic storm hydrograph (testing mode)...")
+            return generate_synthetic_storm()
+        raise
+
+def find_companion_ts1(ts1_path: str) -> str | None:
+    """Given a TS1 path that lacks data, try to locate a sibling with the same storm descriptor.
+
+    Example: cat1_Pipes_6EY AEP, 6 hour burst, Storm 3.ts1 ->
+             cat1_Catchments_6EY AEP, 6 hour burst, Storm 3.ts1
+    Priority: Catchments, Channels, then any other matching prefix.
+    """
+    p = Path(ts1_path)
+    folder = p.parent
+    name = p.name
+    # Split into three parts: prefix, category, rest
+    parts = name.split("_", 2)
+    if len(parts) < 3:
+        return None
+    prefix, category, rest = parts[0], parts[1], parts[2]
+    # Candidate prefixes to try
+    categories = ["Catchments", "Channels"]
+    for pref in categories:
+        cand = folder / f"{prefix}_{pref}_{rest}"
+        if cand.exists():
+            # Ensure it actually contains data columns beyond time
+            try:
+                # Read first 200 lines and check for a comma after Time header
+                with open(cand, 'r', encoding='utf-8', errors='ignore') as f:
+                    head = f.read(4096)
+                if 'Time' in head and ',' in head:
+                    return str(cand)
+            except Exception:
+                return str(cand)
+    # Fallback: scan folder for any file with same suffix
+    for other in folder.glob(f"*_{rest}"):
+        if other.name == name:
+            continue
+        return str(other)
+    return None
+
+def inspect_ts1_columns(ts1_path: str) -> dict:
+    """Inspect a TS1 file and return column info for user selection.
+
+    Returns a dict with keys:
+      - source_path: actual file parsed (may be companion)
+      - time_col: int index of time column
+      - data_cols: list[int] indices of candidate data columns
+      - labels: dict[int,str] mapping column index to label/name
+    Raises if no numeric content is found in original or companion.
+    """
+    p = Path(ts1_path)
+    source_path = str(p)
+    try:
+        with open(source_path, 'r', encoding='utf-8', errors='ignore') as f:
+            raw_lines = [ln.strip() for ln in f.readlines()]
+    except Exception as e:
+        raise
+
+    # Parse similarly to read_ts1_file, but stop before building dataframe
+    header_tokens = []
+    col_names = None
+    lines = []
+    saw_index_marker = False
+    for ln in raw_lines:
+        if not ln:
+            continue
+        if ln.strip().startswith('!'):
+            continue
+        low = ln.lower()
+        if low.startswith("start_index") or low.startswith("end_index"):
+            saw_index_marker = True
+            continue
+        if ("time" in low) and ("(" in ln and ")" in ln):
+            # Preserve empty header tokens
+            header_tokens = [tok.strip() for tok in ln.replace("\t", ",").split(",")]
+            col_names = [t for t in header_tokens]
+            continue
+        lines.append(ln)
+
+    def _split_preserve(line: str) -> list[str]:
+        if "," in line or "\t" in line:
+            return [tok.strip() for tok in line.replace("\t", ",").split(",")]
+        return [tok for tok in line.split()]
+
+    rows = []
+    maxw_seen = 0
+    for ln in lines:
+        toks = _split_preserve(ln)
+        if not toks:
+            continue
+        nums = []
+        for t in toks:
+            tt = t.strip()
+            if tt == "":
+                nums.append(np.nan)
+            else:
+                try:
+                    nums.append(float(tt))
+                except ValueError:
+                    nums.append(np.nan)
+        if any(np.isfinite(x) for x in nums):
+            rows.append(nums)
+            if len(nums) > maxw_seen:
+                maxw_seen = len(nums)
+
+    if not rows:
+        # try companion file
+        comp = find_companion_ts1(source_path)
+        if comp:
+            source_path = comp
+            with open(source_path, 'r', encoding='utf-8', errors='ignore') as f:
+                raw_lines = [ln.strip() for ln in f.readlines()]
+            header_tokens = []
+            col_names = None
+            lines = []
+            saw_index_marker = False
+            for ln in raw_lines:
+                if not ln:
+                    continue
+                if ln.startswith('!'):
+                    continue
+                low = ln.lower()
+                if low in {"start_index", "end_index"}:
+                    saw_index_marker = True
+                    continue
+                if "time" in low and "(" in ln and ")" in ln:
+                    header_tokens = [tok.strip() for tok in ln.replace("\t", ",").split(",") if tok.strip()]
+                    col_names = [t for t in header_tokens]
+                    continue
+                lines.append(ln)
+            rows = []
+            for ln in lines:
+                toks = [t for t in ln.replace("\t", ",").split(",") if t != ""]
+                if len(toks) == 1:
+                    toks = ln.split()
+                nums = []
+                for t in toks:
+                    try:
+                        nums.append(float(t))
+                    except ValueError:
+                        pass
+                if nums:
+                    rows.append(nums)
+        if not rows:
+            raise ValueError("No numeric content in TS1 or companion")
+
+    # Normalize and trim
+    import math
+    maxw = maxw_seen if maxw_seen > 0 else max(len(r) for r in rows)
+    for r in rows:
+        if len(r) < maxw:
+            r.extend([math.nan] * (maxw - len(r)))
+    arr = np.array(rows, dtype=float)
+
+    if saw_index_marker and arr.shape[0] >= 2 and arr.shape[1] >= 2:
+        first_two_ints = np.all(np.isfinite(arr[0, :2])) and np.all(np.mod(arr[0, :2], 1.0) == 0.0)
+        if first_two_ints:
+            arr = arr[1:, :]
+
+    # Determine time and data columns (TS1: first column is time)
+    time_col = 0
+    data_cols = [c for c in range(arr.shape[1]) if c != time_col]
+    data_cols = [c for c in data_cols if np.count_nonzero(np.isfinite(arr[:, c])) >= 3]
+
+    if len(data_cols) == 0:
+        comp = find_companion_ts1(source_path)
+        if comp and comp != source_path:
+            # re-run on companion
+            return inspect_ts1_columns(comp)
+        raise ValueError("Found time column but no data columns in TS1")
+
+    labels = {}
+    if col_names:
+        for c in data_cols:
+            if c < len(col_names):
+                labels[c] = col_names[c]
+    # Fallback labels
+    for c in data_cols:
+        labels.setdefault(c, f"col{c}")
+
+    return {
+        "source_path": source_path,
+        "time_col": int(time_col),
+        "data_cols": [int(c) for c in data_cols],
+        "labels": labels,
+    }
+
+def generate_synthetic_storm():
+    """Generate synthetic storm hydrograph for testing"""
+    # Create a realistic storm pattern (6-hour storm)
+    duration_hours = 6
+    time_step_minutes = 10
+    total_steps = int(duration_hours * 60 / time_step_minutes)
+    
+    times = np.linspace(0, duration_hours, total_steps)
+    
+    # Double-peaked storm pattern
+    peak1_time = 1.5  # hours
+    peak2_time = 4.0  # hours
+    peak1_intensity = 0.015  # m³/s
+    peak2_intensity = 0.008  # m³/s
+    
+    flows = []
+    for t in times:
+        # Gaussian peaks
+        flow1 = peak1_intensity * np.exp(-((t - peak1_time) / 0.5) ** 2)
+        flow2 = peak2_intensity * np.exp(-((t - peak2_time) / 0.8) ** 2)
+        base_flow = 0.001  # baseline infiltration
+        total_flow = flow1 + flow2 + base_flow
+        flows.append(max(0, total_flow))
+    
+    df = pd.DataFrame({
+        'time_hours': times,
+        'flow_m3s': flows,
+        'time_minutes': times * 60,
+    'datetime': pd.date_range(start='2025-01-01', periods=len(times), freq='10min')
+    })
+    
+    print(f"   ✅ Generated synthetic storm: {len(df)} time steps")
+    print(f"   🌊 Peak flow: {df['flow_m3s'].max():.3f} m³/s")
+    
+    return df
+
+def create_time_varying_stress_periods(
+    storm_data,
+    total_duration_hours: float = 48,
+    post_storm_step_hours: float = 1.0,
+    *,
+    # Pre-storm stabilization: a few short zero-inflow periods
+    pre_storm_steps: int = 3,
+    pre_storm_step_hours: float = 0.5,
+    pre_storm_nstp: int = 5,
+    # Adaptive refinement during steep hydrograph changes
+    refine: bool = True,
+    nstp_max: int = 12,
+):
+    """
+    Create MODFLOW stress periods for time-varying inputs
+    
+    Parameters:
+    -----------
+    storm_data : pandas.DataFrame
+        Storm hydrograph data
+    total_duration_hours : float
+        Total simulation duration
+        
+    Returns:
+    --------
+    list : Stress period data for MODFLOW
+    """
+    print(f"⏰ Creating time-varying stress periods for {storm_data.shape[0]} time steps...")
+    
+    # Create stress periods that match storm timing
+    stress_periods: list[list[float | int]] = []
+    # Aligned inflow per stress period (m3/s)
+    inflow_m3s_per_sp: list[float] = []
+    
+    # Storm period (match hydrograph sample steps; assume uniform spacing if possible)
+    times_h = np.asarray(storm_data['time_hours'].values, dtype=float)
+    # sanitize: finite, sorted, unique
+    times_h = times_h[np.isfinite(times_h)]
+    if times_h.size == 0:
+        raise ValueError("No valid time points for stress periods")
+    times_h = np.sort(times_h)
+    times_h = np.unique(times_h)
+    storm_duration = float(times_h[-1])
+    # compute step lengths from diffs and optional first step
+    diffs = np.diff(times_h)
+    step_lengths = [float(x) for x in diffs if x > 0]
+    first = times_h[0]
+    if first > 0:
+        step_lengths.insert(0, float(first))
+    
+    storm_steps = len(step_lengths)
+    print(f"   🌊 Storm period: {storm_duration:.1f} hours ({storm_steps} steps)")
+    
+    # Determine flow values aligned to each storm step (piecewise-constant per step)
+    flows_h = np.asarray(storm_data['flow_m3s'].values, dtype=float)
+    # Ensure flows are finite and aligned to sorted times
+    if flows_h.size != times_h.size:
+        # Fall back conservatively: truncate or pad with last value
+        m = min(flows_h.size, times_h.size)
+        flows_h = np.resize(flows_h[:m], times_h.size)
+
+    # Build per-step flows and slopes
+    per_step_flows: list[float] = []
+    slopes: list[float] = []  # |dQ|/dt over each step (m3/s per hour)
+    if first > 0:
+        per_step_flows.append(float(flows_h[0]))
+        # Slope from implicit 0 to first sample
+        dq0 = abs(float(flows_h[0]) - 0.0)
+        slopes.append(dq0 / max(first, 1e-9))
+    for i, Lh in enumerate(diffs):
+        if Lh <= 0:
+            continue
+        per_step_flows.append(float(flows_h[i]))  # flow at start of interval [t_i, t_{i+1}]
+        dq = abs(float(flows_h[i+1]) - float(flows_h[i]))
+        slopes.append(dq / max(float(Lh), 1e-9))
+
+    # Adaptive nstp per storm step
+    nstp_by_step: list[int] = []
+    if refine and len(slopes) > 0 and np.nanmax(slopes) > 0:
+        s = np.asarray(slopes, dtype=float)
+        s = s[np.isfinite(s)]
+        if s.size == 0 or np.nanmax(s) == 0:
+            nstp_by_step = [1] * len(per_step_flows)
+        else:
+            p50 = float(np.percentile(s, 50))
+            p70 = float(np.percentile(s, 70))
+            p90 = float(np.percentile(s, 90))
+            for val in slopes:
+                if val >= p90 and nstp_max >= 6:
+                    n = min(nstp_max, 6)
+                elif val >= p70 and nstp_max >= 4:
+                    n = min(nstp_max, 4)
+                else:
+                    n = min(nstp_max, 3)
+                nstp_by_step.append(int(n))
+    else:
+        nstp_by_step = [1] * len(per_step_flows)
+
+    # Pre-storm stabilization periods (zero inflow)
+    pre_n = max(0, int(pre_storm_steps))
+    pre_len_h = max(1e-6, float(pre_storm_step_hours))
+    pre_nstp = max(1, int(pre_storm_nstp))
+    for _ in range(pre_n):
+        stress_periods.append([pre_len_h, pre_nstp, 1.0])
+        inflow_m3s_per_sp.append(0.0)
+
+    # Add storm stress periods with adaptive nstp
+    for Lh, nstp_for_step, q_step in zip(step_lengths, nstp_by_step, per_step_flows):
+        if Lh <= 0:
+            continue
+        stress_periods.append([float(Lh), int(max(1, nstp_for_step)), 1.0])  # [length, nsteps, multiplier]
+        inflow_m3s_per_sp.append(float(max(0.0, q_step)))
+    
+    # Post-storm period (coarser resolution)
+    remaining_time = float(total_duration_hours) - storm_duration
+    if remaining_time > 0:
+        # Use fixed step size for post-storm (e.g., 12-hour steps)
+        step_h = float(post_storm_step_hours)
+        post_storm_steps = max(1, int(np.floor(remaining_time / step_h)))
+        remainder = max(0.0, remaining_time - post_storm_steps * step_h)
+
+        print(f"   📉 Post-storm period: {remaining_time:.1f} hours ({post_storm_steps}×{step_h:.1f}h + {remainder:.1f}h)")
+
+        for _ in range(post_storm_steps):
+            stress_periods.append([step_h, 1, 1.0])
+            inflow_m3s_per_sp.append(0.0)
+        if remainder > 1e-6:
+            stress_periods.append([remainder, 1, 1.0])
+            inflow_m3s_per_sp.append(0.0)
+    
+    total_periods = len(stress_periods)
+    print(f"   ✅ Created {total_periods} stress periods")
+    print(f"   ⏱️ Total simulation time: {sum([sp[0] for sp in stress_periods]):.1f} hours")
+    
+    # Safety: align lengths
+    if len(inflow_m3s_per_sp) != len(stress_periods):
+        # Pad or trim to match
+        if len(inflow_m3s_per_sp) < len(stress_periods):
+            inflow_m3s_per_sp.extend([0.0] * (len(stress_periods) - len(inflow_m3s_per_sp)))
+        else:
+            inflow_m3s_per_sp = inflow_m3s_per_sp[:len(stress_periods)]
+
+    return stress_periods, inflow_m3s_per_sp
+
+def create_lak_with_time_series(
+    basin_cells,
+    storm_data,
+    stress_periods,
+    model_dir,
+    model_name,
+    basin_floor,
+    lakebed_thickness,
+    lake_initial_stage,
+    laktab_rows=None,
+    lake_surface_area_m2=2500.0,
+    table_stage_max_offset=2.0,
+    lakebed_k=1e-5,
+    infiltration_mode: str = "vertical",
+    side_k: float | None = None,
+    delr=None,
+    delc=None,
+    nrow: int | None = None,
+    ncol: int | None = None,
+    layer_thickness: float | None = None,
+    max_depth: float | None = None,
+    aligned_inflows_m3s: list[float] | None = None,
+    spill_linear_extension_m: float = 10.0,
+    bed_leak_multiplier: float = 1.0,
+):
+    """Create LAK package with time-varying inflow and stage–volume table.
+
+    Parameters:
+      - basin_cells: list[(k,i,j)] lake connection cells on the connection layer
+      - lake_surface_area_m2: plan-view area used for LAKTAB (assumed constant)
+      - table_stage_max_offset: meters above basin_floor to extend table
+    """
+    print(f"🌊 Creating LAK package with time-varying inflows...")
+
+    lak_file = os.path.join(model_dir, f"{model_name}.lak")
+    laktab_file = os.path.join(model_dir, f"{model_name}.laktab")
+
+    # Clamp initial stage to safe range for current geometry
+    try:
+        lake_initial_stage = max(float(basin_floor), float(lake_initial_stage))
+        if max_depth is not None:
+            crest = float(basin_floor) + float(max_depth)
+            if lake_initial_stage > crest:
+                print(f"   ⚠️ Initial stage {lake_initial_stage:.3f} exceeds crest {crest:.3f}; resetting to basin floor")
+                lake_initial_stage = float(basin_floor)
+    except Exception:
+        pass
+
+    # Write LAKTAB file for stage–volume–area relation
+    try:
+        if laktab_rows is None:
+            # Backward-compatible constant-area table
+            nrows = 11
+            stage_min = float(basin_floor)
+            stage_max = float(basin_floor + max(0.5, table_stage_max_offset))
+            stages = np.linspace(stage_min, stage_max, nrows)
+            sarea = float(lake_surface_area_m2)
+            rows = [(stg, max(0.0, stg - basin_floor) * sarea, sarea) for stg in stages]
+        else:
+            rows = list(laktab_rows)
+
+        # Ensure strictly non-decreasing stage and volume
+        rows.sort(key=lambda r: r[0])
+        last_v = -1e30
+        fixed_rows = []
+        for stg, vol, area in rows:
+            v = max(last_v, float(vol))
+            fixed_rows.append((float(stg), v, float(area)))
+            last_v = v
+
+        # Linear extension above crest for stability (use last area)
+        try:
+            if spill_linear_extension_m and spill_linear_extension_m > 0 and len(fixed_rows) >= 2:
+                stg_last, vol_last, area_last = fixed_rows[-1]
+                ext_top = stg_last + float(spill_linear_extension_m)
+                # Use ~21 steps for smoothness
+                ext_n = max(2, int(min(101, max(21, spill_linear_extension_m * 2))))
+                ext_stages = np.linspace(stg_last + 0.01, ext_top, ext_n)
+                for s in ext_stages:
+                    dv = (s - stg_last) * float(area_last)
+                    fixed_rows.append((float(s), float(vol_last + dv), float(area_last)))
+                print(f"   ⚠️ Extended LAKTAB linearly by {spill_linear_extension_m:.1f} m above crest for stability")
+        except Exception:
+            pass
+
+        # Write
+        from utils.lak_utils import write_laktab_file as _write
+        _write(laktab_file, fixed_rows)
+        print(f"   ✅ LAKTAB file created: {os.path.basename(laktab_file)}")
+    except Exception as e:
+        print(f"   ⚠️ Could not create LAKTAB file: {e}")
+    # Pre-compute total number of connections (needed for PACKAGEDATA nlakeconn)
+    nlakeconn = len(basin_cells)
+    if str(infiltration_mode).lower() == "full":
+        if delr is None or delc is None or nrow is None or ncol is None or layer_thickness is None:
+            raise ValueError("Full infiltration requires delr, delc, nrow, ncol, and layer_thickness")
+        footprint = {(r, c) for (_, r, c) in basin_cells}
+        extra = 0
+        for _, row, col in basin_cells:
+            neighbors = [
+                (row, col - 1),
+                (row, col + 1),
+                (row - 1, col),
+                (row + 1, col),
+            ]
+            for nr, nc in neighbors:
+                if 0 <= nr < nrow and 0 <= nc < ncol and (nr, nc) not in footprint:
+                    extra += 1
+        nlakeconn += extra
+
+    with open(lak_file, 'w') as f:
+        # Header
+        f.write("# LAK Package with Time-Varying Inflows\n")
+        f.write("# Generated by BaSIM Phase 3.2\n")
+        f.write("# Storm-driven infiltration basin simulation\n\n")
+
+        # Options
+        f.write("BEGIN OPTIONS\n")
+        f.write("  BOUNDNAMES\n")
+        f.write("  PRINT_INPUT\n")
+        f.write("  PRINT_FLOWS\n")
+        f.write("  SURFDEP 0.0\n")
+        f.write("  STAGE FILEOUT basin_stages.txt\n")
+        f.write("  BUDGET FILEOUT basin_budget.txt\n")
+        f.write(f"  OBS6 FILEIN {model_name}_lak.obs\n")
+        f.write("END OPTIONS\n\n")
+
+        # Dimensions
+        f.write("BEGIN DIMENSIONS\n")
+        f.write("  NLAKES 1\n")
+        f.write("  NOUTLETS 0\n")
+        f.write("  NTABLES 1\n")
+        f.write("END DIMENSIONS\n\n")
+
+        # Package data
+        f.write("BEGIN PACKAGEDATA\n")
+        f.write("# lakeno strt nlakeconn aux boundname\n")
+        f.write(f"  1 {lake_initial_stage} {nlakeconn} BASIN_LAKE\n")
+        f.write("END PACKAGEDATA\n\n")
+
+        # Connection data
+        f.write("BEGIN CONNECTIONDATA\n")
+        f.write("# lakeno iconn cellid claktype bedleak belev telev connlen connwidth\n")
+        iconn = 0
+        # Compute leakance in 1/day (optionally scaled for calibration/tuning)
+        bedleak_day = (float(lakebed_k) / float(lakebed_thickness)) * 86400.0 * float(bed_leak_multiplier)
+        side_k_eff = float(side_k) if side_k is not None else float(lakebed_k)
+        side_leak_day = (side_k_eff / float(lakebed_thickness)) * 86400.0 * float(bed_leak_multiplier)
+
+        # Helper for writing a connection
+        def _write_conn(layer, row, col, claktype, bedleak, belev, telev, connlen, connwidth):
+            nonlocal iconn
+            iconn += 1
+            f.write(
+                f"  1 {iconn} {layer+1} {row+1} {col+1} {claktype} {bedleak} {belev} {telev} {connlen} {connwidth}\n"
+            )
+
+        # 1) Bottom (vertical) connections
+        for layer, row, col in basin_cells:
+            belev = basin_floor - lakebed_thickness
+            telev = basin_floor
+            # Use full cell footprint for contact area (connlen x connwidth)
+            dx = (delr[col] if hasattr(delr, '__len__') else float(delr or 2.0))
+            dy = (delc[row] if hasattr(delc, '__len__') else float(delc or 2.0))
+            connlen = float(dx)
+            connwidth = float(dy)
+            _write_conn(layer, row, col, "VERTICAL", bedleak_day, belev, telev, connlen, connwidth)
+
+        # 2) Optional horizontal (side/bank) connections for 'full' mode
+        if str(infiltration_mode).lower() == "full":
+            # Ensure grid metrics are available
+            if delr is None or delc is None or nrow is None or ncol is None or layer_thickness is None:
+                raise ValueError("Full infiltration requires delr, delc, nrow, ncol, and layer_thickness")
+
+            # build a set for quick lookup
+            footprint = {(r, c) for (_, r, c) in basin_cells}
+
+            # find perimeter cells (4-neighbour)
+            for layer, row, col in basin_cells:
+                neighbors = [
+                    (row, col - 1, 'W'),
+                    (row, col + 1, 'E'),
+                    (row - 1, col, 'N'),
+                    (row + 1, col, 'S'),
+                ]
+                for nr, nc, side in neighbors:
+                    if nr < 0 or nr >= nrow or nc < 0 or nc >= ncol:
+                        continue
+                    if (nr, nc) in footprint:
+                        continue  # internal neighbour
+                    # This face is on the basin perimeter; add a HORIZONTAL connection on current cell
+                    if side in ('W', 'E'):
+                        # West/East face length spans the row cell size (north-south direction)
+                        connlen = float(delc[row]) if hasattr(delc, '__len__') else float(delc or 2.0)
+                    else:
+                        # North/South face length spans the column cell size (east-west direction)
+                        connlen = float(delr[col]) if hasattr(delr, '__len__') else float(delr or 2.0)
+                    # Vertical height of contact along bank uses full layer thickness
+                    connwidth = float(layer_thickness)
+                    belev = float(basin_floor - lakebed_thickness)
+                    # Cap top of contact at basin floor to ensure <= cell top in connection layer
+                    telev = float(basin_floor)
+                    _write_conn(layer, row, col, "HORIZONTAL", side_leak_day, belev, telev, connlen, connwidth)
+
+        f.write("END CONNECTIONDATA\n\n")
+
+        # Tables
+        f.write("BEGIN TABLES\n")
+        f.write(f"  1 TAB6 FILEIN {os.path.basename(laktab_file)}\n")
+        f.write("END TABLES\n\n")
+
+        # Period data
+        print("   📊 Creating time-varying inflow data...")
+        storm_flows = storm_data['flow_m3s'].values
+        for sp_idx, _sp in enumerate(stress_periods):
+            sp_num = sp_idx + 1
+            f.write(f"BEGIN PERIOD {sp_num}\n")
+            # Use aligned inflow list if provided (handles pre/post-storm periods)
+            if aligned_inflows_m3s is not None and sp_idx < len(aligned_inflows_m3s):
+                inflow_m3s = float(aligned_inflows_m3s[sp_idx])
+            else:
+                # Fallback: storm flow during storm; zero after storm ends
+                inflow_m3s = storm_flows[sp_idx] if sp_idx < len(storm_flows) else 0.0
+            inflow_m3s = max(0.0, float(inflow_m3s))
+            inflow_m3day = inflow_m3s * 86400.0
+            f.write(f"# Stress period {sp_num}: inflow = {inflow_m3s:.6f} m3/s ({inflow_m3day:.3f} m3/day)\n")
+            f.write(f"  1 INFLOW {inflow_m3day}\n")
+            f.write("END PERIOD\n\n")
+            if sp_idx % 10 == 0 or sp_idx == len(stress_periods) - 1:
+                progress = (sp_idx + 1) / len(stress_periods) * 100
+                print(f"   📈 Progress: {progress:.1f}% ({sp_idx + 1}/{len(stress_periods)} periods)")
+
+    print(f"   ✅ LAK file created: {os.path.basename(lak_file)}")
+    print(f"   🌊 Lake connections: {len(basin_cells)}")
+    print(f"   ⏰ Stress periods: {len(stress_periods)}")
+
+    # LAK observations file
+    obs_file = os.path.join(model_dir, f"{model_name}_lak.obs")
+    with open(obs_file, 'w') as fo:
+        fo.write("# LAK Observations (MF6 UTLOBS6)\n")
+        fo.write(f"BEGIN CONTINUOUS FILEOUT {model_name}_lak_stage.csv CSV\n")
+        fo.write("  lak_stage stage 1\n")
+        fo.write("END CONTINUOUS\n")
+    print(f"   ✅ LAK OBS file created: {os.path.basename(obs_file)} -> {model_name}_lak_stage.csv")
+
+    return lak_file
+
+def run_phase3_step32_model():
+    """Main function to run Phase 3 Step 3.2 model"""
+    
+    print("=" * 70)
+    print("BASIN INFILTRATION SIMULATOR - PHASE 3 STEP 3.2")
+    print("=" * 70)
+    print("🌊 Time-Varying Storm Inputs with LAK Package")
+    print("🎯 Realistic storm event modeling")
+    print("📊 TS1 hydrograph integration")
+    print("=" * 70)
+    
+    # Configuration (user-adjustable)
+    # Infiltration mode and bed properties (env-overridable)
+    infil_mode = os.getenv("BASIM_INFILTRATION_MODE", "vertical").strip().lower()
+    try:
+        bed_thickness_m = float(os.getenv("BASIM_BED_THICKNESS_M", "0.5"))
+    except Exception:
+        bed_thickness_m = 0.5
+    try:
+        bed_k_mpd = float(os.getenv("BASIM_BED_K_MPD", "5.0"))  # meters per day
+    except Exception:
+        bed_k_mpd = 5.0
+    try:
+        side_k_mpd = os.getenv("BASIM_SIDE_K_MPD")
+        side_k_mpd = float(side_k_mpd) if side_k_mpd is not None else None
+    except Exception:
+        side_k_mpd = None
+
+    # Build a short model name (MF6 limit is 16 chars)
+    BASE_MODEL_NAME = "bas32"
+    mode_suffix = "vert" if infil_mode.startswith("v") else ("full" if infil_mode.startswith("f") else infil_mode[:4])
+    MODEL_NAME = f"{BASE_MODEL_NAME}_{mode_suffix}"[:16]
+    PROJECT_ROOT = Path(__file__).parent.parent  # Go up from src to project root
+    MODEL_DIR = PROJECT_ROOT / "model_output" / "phase3" / "step32"
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+    # User-configurable parameters (could be moved to a YAML/JSON later)
+    basin_geom = BasinGeometry(
+        length_floor=50.0,  # m
+        width_floor=50.0,   # m
+        max_depth=2.0,      # m water depth above floor
+        side_slope_hv=2.0,  # 2H:1V side slope
+        floor_elev=5.0,     # m AHD
+    )
+    initial_groundwater_head = 4.0  # m
+    k_horizontal = 20.0  # m/day
+    k_vertical = 5.0     # m/day
+    sy = 0.05
+    ss = 1e-5
+    
+    # Find TS1 file
+    drains_dir = PROJECT_ROOT / "DRAINS" / "OUTPUT"
+    if drains_dir.exists():
+        ts1_files = [f for f in drains_dir.iterdir() if f.suffix == '.ts1']
+    else:
+        ts1_files = []
+    
+    if ts1_files:
+        ts1_file = ts1_files[0]  # Use first TS1 file
+        print(f"🎯 Using TS1 file: {ts1_file.name}")
+    else:
+        ts1_file = None
+        print(f"⚠️ No TS1 files found, will use synthetic storm")
+    
+    # Read storm data
+    if ts1_file and ts1_file.exists():
+        storm_data = read_ts1_file(str(ts1_file), allow_synthetic=False)
+    else:
+        storm_data = generate_synthetic_storm()
+    
+    # Plot storm hydrograph
+    plt.figure(figsize=(12, 6))
+    plt.plot(storm_data['time_hours'], storm_data['flow_m3s'], 'b-', linewidth=2)
+    plt.xlabel('Time (hours)')
+    plt.ylabel('Inflow Rate (m³/s)')
+    plt.title('Storm Hydrograph - Time-Varying Inflows')
+    plt.grid(True, alpha=0.3)
+    storm_plot_file = MODEL_DIR / 'storm_hydrograph.png'
+    plt.savefig(storm_plot_file, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"   📊 Storm plot saved: {storm_plot_file.name}")
+
+    # Save inflow time series CSV for downstream plots (hours, days, m3/s, m3/day)
+    try:
+        inflow_csv = MODEL_DIR / 'inflow_timeseries.csv'
+        inflow_df = pd.DataFrame({
+            'time_hours': storm_data['time_hours'].values,
+            'time_days': storm_data['time_hours'].values / 24.0,
+            'flow_m3s': storm_data['flow_m3s'].values,
+            'flow_m3day': storm_data['flow_m3s'].values * 86400.0,
+        })
+        inflow_df.to_csv(inflow_csv, index=False)
+        print(f"   💾 Saved inflow CSV: {inflow_csv.name}")
+    except Exception as e:
+        print(f"   ⚠️ Could not save inflow CSV: {e}")
+    
+    # Create model grid using geometry-driven domain sizing
+    print(f"\n🏗️ Creating adaptive refined grid...")
+    nlay = 8
+    # Ensure the domain extends well beyond the basin to avoid boundary effects
+    # Use a higher minimum factor and more gradations so the far field is coarse
+    dom_factor = suggest_domain_factor(basin_geom, min_factor=12.0, pad_multiplier=4.0)
+    grid_info = create_adaptive_refined_grid(
+        basin_length=basin_geom.length_floor,
+        basin_width=basin_geom.width_floor,
+        domain_factor=dom_factor,
+        refinement_zones=4,           # add an extra near/transition ring
+        min_cell_size=2.0,
+        max_cell_size=25.0,           # coarse far-field to keep cell count manageable
+    )
+    
+    # Extract grid information
+    nrow, ncol = grid_info['nrow'], grid_info['ncol']
+    delr, delc = grid_info['delr'], grid_info['delc']
+    basin_rows = grid_info['basin_rows']  # [start_row, end_row]
+    basin_cols = grid_info['basin_cols']  # [start_col, end_col]
+    
+    # Create basin cell coordinates from the ranges
+    basin_cells_2d = []
+    for row in range(basin_rows[0], basin_rows[1]):
+        for col in range(basin_cols[0], basin_cols[1]):
+            basin_cells_2d.append((row, col))
+    
+    print(f"   📐 Grid dimensions: {nrow} × {ncol} × {nlay}")
+    print(f"   📊 Total cells: {nrow * ncol * nlay:,}")
+    
+    # Create layer configuration
+    layer_thickness = [2, 3, 5, 8, 10, 12, 15, 20]  # Progressive increase
+    top = 10.0  # ground surface elevation (m)
+    botm = [top - sum(layer_thickness[:i+1]) for i in range(nlay)]
+
+    # Basin/lakebed parameters (consistent elevations)
+    basin_floor = float(basin_geom.floor_elev)  # basin floor elevation (lakebed top)
+    lakebed_thickness = bed_thickness_m      # lakebed thickness (m)
+    lake_initial_stage = basin_floor  # initial lake stage at floor
+
+    # Determine connection layer that spans the basin floor elevation
+    conn_layer = None
+    for k in range(nlay):
+        lay_top = top if k == 0 else botm[k-1]
+        lay_bot = botm[k]
+        if lay_bot < basin_floor <= lay_top:
+            conn_layer = k
+            break
+    if conn_layer is None:
+        # Fallback: first layer with basin floor above its bottom
+        for k in range(nlay):
+            if basin_floor > botm[k]:
+                conn_layer = k
+                break
+    if conn_layer is None:
+        conn_layer = 0
+
+    # Build 3D basin connection cells on the connection layer
+    basin_cells = [(conn_layer, r, c) for (r, c) in basin_cells_2d]
+    print(f"   🎯 Basin cells: {len(basin_cells)} (connection layer k={conn_layer})")
+    
+    # Create stress periods for time-varying inputs
+    # Auto time: hydrograph length + 5 days of drawdown
+    storm_duration_h = float(np.max(storm_data['time_hours'].values))
+    total_sim_hours = storm_duration_h + 5.0 * 24.0
+    stress_periods, inflow_per_sp = create_time_varying_stress_periods(
+        storm_data,
+        total_sim_hours,
+        post_storm_step_hours=12.0,
+    )
+    
+    # Create MODFLOW 6 simulation
+    print(f"\n🏗️ Creating MODFLOW 6 model with time-varying inputs...")
+    
+    # Time discretization
+    tdis_data = []
+    for sp_length, nsteps, mult in stress_periods:
+        tdis_data.append([sp_length / 24.0, nsteps, mult])  # Convert hours to days
+    
+    # Simulation
+    sim = flopy.mf6.MFSimulation(
+        sim_name=MODEL_NAME,
+        sim_ws=str(MODEL_DIR),
+        exe_name=find_mf6_exe()
+    )
+    
+    # Time discretization
+    tdis = flopy.mf6.ModflowTdis(
+        sim,
+        time_units="DAYS",
+        nper=len(stress_periods),
+        perioddata=tdis_data
+    )
+    
+    # Solver (robust settings for complex time-varying simulation)
+    # Choose solver settings based on geometry difficulty
+    needs_relax = (
+        basin_geom.max_depth > 3.0 or
+        basin_geom.side_slope_hv < 1.5 or
+        abs(basin_geom.floor_elev - initial_groundwater_head) < 0.5
+    )
+    if needs_relax:
+        print("   🔧 Challenging geometry detected → relaxed IMS settings")
+        ims = flopy.mf6.ModflowIms(
+            sim,
+            print_option="SUMMARY",
+            complexity="COMPLEX",
+            outer_dvclose=2e-3,
+            outer_maximum=800,
+            under_relaxation="DBD",
+            under_relaxation_theta=0.7,
+            under_relaxation_kappa=0.15,
+            linear_acceleration="BICGSTAB",
+            inner_maximum=800,
+            inner_dvclose=2e-5,
+            rcloserecord=[0.02, "STRICT"],
+            backtracking_number=20,
+            backtracking_tolerance=2.0,
+            backtracking_reduction_factor=0.2,
+            backtracking_residual_limit=0.0,
+        )
+    else:
+        ims = flopy.mf6.ModflowIms(
+            sim,
+            print_option="SUMMARY",
+            complexity="COMPLEX",
+            outer_dvclose=5e-4,
+            outer_maximum=500,
+            under_relaxation="DBD",
+            linear_acceleration="BICGSTAB",
+            inner_maximum=500,
+            inner_dvclose=5e-6,
+            rcloserecord=[0.005, "STRICT"],
+            backtracking_number=10,
+            backtracking_tolerance=1.0,
+            backtracking_reduction_factor=0.3,
+            backtracking_residual_limit=0.0,
+        )
+    
+    # Groundwater flow model
+    gwf = flopy.mf6.ModflowGwf(sim, modelname=MODEL_NAME, save_flows=True, newtonoptions="NEWTON UNDER_RELAXATION")
+    
+    # Discretization
+    dis = flopy.mf6.ModflowGwfdis(
+        gwf,
+        nlay=nlay,
+        nrow=nrow,
+        ncol=ncol,
+        delr=delr,
+        delc=delc,
+        top=top,
+        botm=botm
+    )
+    
+    # Initial conditions (set water table below basin floor so infiltration occurs)
+    # Auto-adjust initial GW if too close to basin floor
+    if initial_groundwater_head >= basin_geom.floor_elev - 0.1:
+        print(f"   🔧 Adjusting initial groundwater to {basin_geom.floor_elev - 1.0:.2f} m (1 m below floor)")
+        initial_groundwater_head = basin_geom.floor_elev - 1.0
+    ic = flopy.mf6.ModflowGwfic(gwf, strt=initial_groundwater_head)
+    
+    # Node property flow: higher horizontal K to promote lateral drainage
+    npf = flopy.mf6.ModflowGwfnpf(
+        gwf,
+        save_flows=True,
+        icelltype=1,  # Convertible layers
+        k=k_horizontal,
+        k33=k_vertical  # Anisotropy: faster lateral drainage
+    )
+    
+    # Storage
+    sto = flopy.mf6.ModflowGwfsto(
+        gwf,
+        save_flows=True,
+        iconvert=1,
+        ss=ss,
+        sy=sy  # lower specific yield to accelerate water table response
+    )
+    
+    # General head boundaries (domain edges) with finite conductance
+    # This allows natural gradients and drainage without fixing head exactly.
+    boundary_head = initial_groundwater_head
+
+    # Compute layer thickness at the connection layer
+    lay_top = top if conn_layer == 0 else botm[conn_layer - 1]
+    lay_bot = botm[conn_layer]
+    layer_thickness = float(lay_top - lay_bot)
+    if layer_thickness <= 0:
+        layer_thickness = 1.0
+    # MF6 requires GHB stage/head to be >= cell bottom. If the
+    # configured groundwater level is below the bottom, clamp it
+    # slightly above the bottom to satisfy input constraints while
+    # preserving the intended gradient.
+    boundary_head_min = float(lay_bot) + max(1e-3, 1e-3 * layer_thickness)
+    boundary_head_eff = max(float(boundary_head), boundary_head_min)
+
+    def _as_array(v, n):
+        import numpy as _np
+        return _np.array(v) if hasattr(v, '__len__') else _np.full(n, v)
+
+    delr_arr = _as_array(delr, ncol)
+    delc_arr = _as_array(delc, nrow)
+
+    ghb_list = []
+    K_edge = float(k_horizontal)  # use horizontal aquifer K (m/day)
+    ghb_mult = 100.0      # strongly boost conductance to speed boundary drainage
+    for i in range(nrow):
+        for j in range(ncol):
+            on_edge = (i == 0 or i == nrow - 1 or j == 0 or j == ncol - 1)
+            if not on_edge:
+                continue
+            # Determine face orientation and geometry
+            if j == 0 or j == ncol - 1:
+                width = float(delc_arr[i])
+                distance = max(0.5 * float(delr_arr[j]), 1e-6)
+            else:  # top/bottom edges
+                width = float(delr_arr[j])
+                distance = max(0.5 * float(delc_arr[i]), 1e-6)
+            conductance = ghb_mult * (K_edge * width * layer_thickness / distance)
+            ghb_list.append([conn_layer, i, j, boundary_head_eff, conductance])
+
+    ghb = flopy.mf6.ModflowGwfghb(
+        gwf,
+        stress_period_data=ghb_list,
+        save_flows=True,
+    )
+
+    # Symmetry diagnostics (non-fatal): verify mirrored grid and balanced GHB sums
+    try:
+        import numpy as _np
+        _delr = _as_array(delr, ncol)
+        _delc = _as_array(delc, nrow)
+        left = _delr[: len(_delr)//2]
+        right = _delr[-1: len(_delr)//2 - 1: -1]
+        top = _delc[: len(_delc)//2]
+        bottom = _delc[-1: len(_delc)//2 - 1: -1]
+        grid_sym_ok = _np.allclose(left, right, rtol=1e-6, atol=1e-9) and _np.allclose(top, bottom, rtol=1e-6, atol=1e-9)
+        cond_left = cond_right = cond_top = cond_bottom = 0.0
+        for (lay, i, j, bh, c) in ghb_list:
+            if j == 0:
+                cond_left += c
+            elif j == ncol - 1:
+                cond_right += c
+            elif i == 0:
+                cond_top += c
+            elif i == nrow - 1:
+                cond_bottom += c
+        print(f"   🔎 Symmetry check → grid: {'OK' if grid_sym_ok else 'MISMATCH'}; GHB ΣC left/right={cond_left:.3e}/{cond_right:.3e}, top/bottom={cond_top:.3e}/{cond_bottom:.3e}")
+    except Exception:
+        pass
+    
+    # Output control
+    oc = flopy.mf6.ModflowGwfoc(
+        gwf,
+        budget_filerecord=f"{MODEL_NAME}.bud",
+        head_filerecord=f"{MODEL_NAME}.hds",
+        saverecord=[("HEAD", "ALL"), ("BUDGET", "ALL")],
+        printrecord=[("HEAD", "LAST"), ("BUDGET", "LAST")]
+    )
+    
+    # Create LAK package with time-varying inputs (also writes OBS for stage CSV)
+    # Build tapered LAKTAB rows from geometry (extend to floor + max_depth)
+    laktab_rows = generate_tapered_laktab(basin_geom, nrows=41)
+
+    lak_file = create_lak_with_time_series(
+        basin_cells,
+        storm_data,
+        stress_periods,
+        str(MODEL_DIR),
+        MODEL_NAME,
+        basin_floor,
+        lakebed_thickness,
+        lake_initial_stage,
+        laktab_rows=laktab_rows,
+        lake_surface_area_m2=basin_geom.length_floor * basin_geom.width_floor,
+        table_stage_max_offset=basin_geom.max_depth,
+        lakebed_k=(bed_k_mpd/86400.0),  # convert m/day -> m/s
+        infiltration_mode=infil_mode,  # "vertical" or "full"
+        side_k=(None if side_k_mpd is None else side_k_mpd/86400.0),  # banks m/day -> m/s
+        aligned_inflows_m3s=inflow_per_sp,
+        delr=delr,
+        delc=delc,
+        nrow=nrow,
+        ncol=ncol,
+        layer_thickness=(top - botm[conn_layer]),
+        max_depth=basin_geom.max_depth,
+        spill_linear_extension_m=10.0,
+    )
+
+    # Write model metadata for plotting/QA (crest elevation, etc.)
+    try:
+        import json as _json
+        crest_elev = float(basin_geom.floor_elev + basin_geom.max_depth)
+        meta = {
+            "floor_elev_mAHD": float(basin_geom.floor_elev),
+            "crest_elev_mAHD": crest_elev,
+            "max_depth_m": float(basin_geom.max_depth),
+            "spill_extension_m": 10.0,
+            "infiltration_mode": infil_mode,
+        }
+        with open(Path(MODEL_DIR) / 'model_meta.json', 'w') as _fp:
+            _json.dump(meta, _fp, indent=2)
+    except Exception:
+        pass
+
+    print(f"\n⚙️ Infiltration settings:")
+    print(f"   Mode: {infil_mode}")
+    print(f"   Bed thickness: {lakebed_thickness} m")
+    print(f"   Bed K: {bed_k_mpd} m/day")
+    if side_k_mpd is not None:
+        print(f"   Bank K: {side_k_mpd} m/day")
+
+    # If a previous OBS CSV exists, keep a copy for before/after comparison
+    try:
+        prev_csv = MODEL_DIR / f"{MODEL_NAME}_lak_stage_prev.csv"
+        cur_csv = MODEL_DIR / f"{MODEL_NAME}_lak_stage.csv"
+        if cur_csv.exists():
+            if prev_csv.exists():
+                prev_csv.unlink()
+            cur_csv.rename(prev_csv)
+            print(f"   💾 Preserved previous stage CSV as: {prev_csv.name}")
+    except Exception as e:
+        print(f"   ⚠️ Could not preserve previous stage CSV: {e}")
+    
+    # Write simulation
+    print(f"\n📝 Writing model files...")
+    sim.write_simulation()
+    
+    # Add LAK to name file manually
+    gwf_nam_file = MODEL_DIR / f"{MODEL_NAME}.nam"
+    with open(gwf_nam_file, 'r') as f:
+        nam_lines = f.readlines()
+    
+    # Add LAK and ensure GHB is listed if missing
+    add_lines = []
+    need_write = False
+    has_lak = any('LAK6' in line for line in nam_lines)
+    has_ghb = any('GHB6' in line for line in nam_lines)
+    for line in nam_lines:
+        if 'OC6' in line:
+            if not has_lak:
+                add_lines.append(f"  LAK6  {Path(lak_file).name}\n")
+                need_write = True
+        add_lines.append(line)
+    if need_write:
+        with open(gwf_nam_file, 'w') as f:
+            f.writelines(add_lines)
+        print(f"   ✅ Added LAK package to model")
+    
+    # Run simulation
+    print(f"\n🚀 Running MODFLOW 6 with time-varying inputs...")
+    print(f"   📂 Working directory: {MODEL_DIR}")
+    print(f"   ⏰ Stress periods: {len(stress_periods)}")
+    print(f"   🌊 Storm duration: {storm_data['time_hours'].max():.1f} hours")
+    
+    try:
+        success, buff = sim.run_simulation(silent=False)
+        
+        if success:
+            print(f"\n🎉 SIMULATION COMPLETED SUCCESSFULLY!")
+            print(f"\n📊 Phase 3 Step 3.2 - Time-Varying Inputs COMPLETE!")
+            print(f"   ✅ Storm hydrograph successfully integrated")
+            print(f"   ✅ Time-varying LAK package operational")
+            print(f"   ✅ Dynamic infiltration modeling complete")
+            
+            # Post-process: visualize lake stage time series and max groundwater contours
+            try:
+                visualize_results(str(MODEL_DIR), MODEL_NAME, nrow, ncol, delr, delc)
+            except Exception as e:
+                print(f"   ⚠️ Visualization step encountered an issue: {e}")
+            
+            return True, sim
+        else:
+            print(f"\n❌ SIMULATION FAILED!")
+            return False, None
+            
+    except Exception as e:
+        print(f"\n💥 ERROR during simulation: {e}")
+        return False, None
+
+if __name__ == "__main__":
+    success, simulation = run_phase3_step32_model()
+    
+    if success:
+        print(f"\n🚀 Phase 3 Step 3.2 implementation complete!")
+        print(f"📊 Time-varying storm inputs successfully integrated with LAK package")
+    else:
+        print(f"\n⚠️ Phase 3 Step 3.2 implementation encountered issues")
+
+
+def run_phase3_step32_with_config(
+    ts1_path: str | None,
+    config: dict,
+):
+    """Run a single scenario using explicit inputs and write a summary JSON.
+
+    config keys (all optional unless noted):
+      - model_tag: short suffix for model/output naming
+      - basin_geometry: {
+            length_floor, width_floor, max_depth, side_slope_hv, floor_elev
+        }
+      - aquifer: {k_horizontal_mpd, k_vertical_mpd, sy, ss, initial_head}
+      - infiltration: {mode, bed_thickness_m, bed_k_mpd, side_k_mpd}
+      - post_storm_days: float (default 5)
+      - post_storm_step_hours: float (default 12)
+      - output_dir: optional absolute/relative path for outputs
+    """
+    from pathlib import Path
+    import json
+
+    # Defaults
+    model_tag = str(config.get("model_tag", "gui"))
+    basin_cfg = config.get("basin_geometry", {})
+    aquifer = config.get("aquifer", {})
+    infil = config.get("infiltration", {})
+    # Default to 3 days post-storm unless overridden
+    post_days = float(config.get("post_storm_days", 3.0))
+    post_step_h = float(config.get("post_storm_step_hours", 8.0))
+    scenario_title = str(config.get("scenario_title", "Scenario 1")).strip() or "Scenario 1"
+    run_id = str(config.get("run_id", ""))
+    lightweight_outputs = bool(config.get("lightweight_outputs", True))
+    cleanup_heavy = bool(config.get("cleanup_heavy", True))
+    # Optional per-run progress file for GUI polling
+    progress_file = config.get("progress_file")
+
+    basin_geom = BasinGeometry(
+        length_floor=float(basin_cfg.get("length_floor", 50.0)),
+        width_floor=float(basin_cfg.get("width_floor", 50.0)),
+        max_depth=float(basin_cfg.get("max_depth", 2.0)),
+        side_slope_hv=float(basin_cfg.get("side_slope_hv", 2.0)),
+        floor_elev=float(basin_cfg.get("floor_elev", 5.0)),
+    )
+
+    initial_groundwater_head = float(aquifer.get("initial_head", 4.0))
+    k_horizontal = float(aquifer.get("k_horizontal_mpd", 20.0))
+    # If vertical not provided, default to horizontal (supports Overall K input)
+    k_vertical = float(aquifer.get("k_vertical_mpd", k_horizontal))
+    bottom_elev = aquifer.get("bottom_elev")
+    sy = float(aquifer.get("sy", 0.05))
+    ss = float(aquifer.get("ss", 1e-5))
+
+    infil_mode = str(infil.get("mode", "vertical")).lower()
+    bed_thk = float(infil.get("bed_thickness_m", 0.5))
+    bed_k_mpd = float(infil.get("bed_k_mpd", 5.0))
+    side_k_mpd = infil.get("side_k_mpd")
+    side_k_mpd = float(side_k_mpd) if side_k_mpd is not None else None
+
+    # Output directory structure:
+    # <base_out>/<Scenario Title>/{inputs,outputs}/<short_ts1>
+    PROJECT_ROOT = Path(__file__).parent.parent
+    base_out = Path(config.get("output_dir") or (PROJECT_ROOT / "model_output" / "phase3" / "step32" / "scenarios"))
+    scen_dir = base_out / scenario_title
+    inputs_dir = scen_dir / "inputs"
+    outputs_root = scen_dir / "outputs"
+    # Shorten TS1 name to key tokens: ~s1 (AEP), ~s2 (duration), optional ~s3 (TP)
+    # Robust to spaces/underscores and punctuation; also scan parent folders; fallback to first line of file; then to stem.
+    def _short_ts1(name: str) -> str:
+        import re
+        from pathlib import Path as _Path
+
+        def _extract_tokens(text: str):
+            """Return (s1, s2, s3) from given text, case-insensitive.
+            - s1: AEP like '1pct', '6EY', '1in100'
+            - s2: duration like '1h', '45m', '2d'
+            - s3: TP like 'TP10'
+            """
+            s1 = s2 = s3 = None
+            t = text or ""
+
+            # Normalize separators to spaces for easier regexing
+            t_sp = re.sub(r"[_,]+", " ", t)
+
+            # AEP patterns
+            m_pct = re.search(r"\b(\d+)\s*%\b", t_sp, re.IGNORECASE)
+            m_aep_pct = re.search(r"\baep\s*(\d+)\s*%\b", t_sp, re.IGNORECASE)
+            m_pc = re.search(r"\b(\d+)\s*p(?:c|ct)\b", t_sp, re.IGNORECASE)
+            m_ey = re.search(r"\b(\d+)\s*ey\b", t_sp, re.IGNORECASE)
+            m_1inx = re.search(r"\b1\s*in\s*(\d+)\b", t_sp, re.IGNORECASE)
+            # ARI patterns (e.g., ARI 100 yr)
+            m_ari1 = re.search(r"\bari\s*(\d+)\s*(?:yr|year|years)?\b", t_sp, re.IGNORECASE)
+            m_ari2 = re.search(r"\b(\d+)\s*(?:yr|year|years)\s*ari\b", t_sp, re.IGNORECASE)
+            if m_pct:
+                s1 = f"{m_pct.group(1)}pct"
+            elif m_aep_pct:
+                s1 = f"{m_aep_pct.group(1)}pct"
+            elif m_pc:
+                s1 = f"{m_pc.group(1)}pct"
+            elif m_ey:
+                s1 = f"{m_ey.group(1)}EY"
+            elif m_1inx:
+                s1 = f"1in{m_1inx.group(1)}"
+            elif m_ari1:
+                s1 = f"1in{m_ari1.group(1)}"
+            elif m_ari2:
+                s1 = f"1in{m_ari2.group(1)}"
+
+            # Duration patterns
+            m_h_word = re.search(r"\b(\d+)\s*h(?:our|r|rs)?\b", t_sp, re.IGNORECASE)
+            m_m_word = re.search(r"\b(\d+)\s*m(?:in(?:ute)?s?)?\b", t_sp, re.IGNORECASE)
+            m_d_word = re.search(r"\b(\d+)\s*d(?:ay)?s?\b", t_sp, re.IGNORECASE)
+            # Also catch compact forms like '1h', '45m'
+            m_h_compact = re.search(r"\b(\d+)h\b", t_sp, re.IGNORECASE)
+            m_m_compact = re.search(r"\b(\d+)m\b", t_sp, re.IGNORECASE)
+            m_d_compact = re.search(r"\b(\d+)d\b", t_sp, re.IGNORECASE)
+            if m_h_word:
+                s2 = f"{m_h_word.group(1)}h"
+            elif m_h_compact:
+                s2 = f"{m_h_compact.group(1)}h"
+            elif m_m_word:
+                s2 = f"{m_m_word.group(1)}m"
+            elif m_m_compact:
+                s2 = f"{m_m_compact.group(1)}m"
+            elif m_d_word:
+                s2 = f"{m_d_word.group(1)}d"
+            elif m_d_compact:
+                s2 = f"{m_d_compact.group(1)}d"
+
+            # Temporal Pattern: TPxx, TPxxxx, or 'Storm 3' → TP3
+            m_tp = re.search(r"\bTP\s*0*(\d+)\b", t_sp, re.IGNORECASE)
+            m_storm = re.search(r"\bstorm\s*0*(\d+)\b", t_sp, re.IGNORECASE)
+            if m_tp:
+                s3 = f"TP{int(m_tp.group(1))}"
+            elif m_storm:
+                s3 = f"TP{int(m_storm.group(1))}"
+
+            return s1, s2, s3
+
+        p = _Path(name)
+        stem = p.stem
+        s1, s2, s3 = _extract_tokens(stem)
+
+        # If ambiguous, try first few lines of file headers (to catch 'Storm 3' etc.)
+        if not (s1 and s2):
+            try:
+                with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                    for _ in range(10):
+                        ln = f.readline()
+                        if not ln:
+                            break
+                        s1f, s2f, s3f = _extract_tokens(ln.strip())
+                        s1 = s1 or s1f
+                        s2 = s2 or s2f
+                        s3 = s3 or s3f
+                        if s1 and s2 and s3:
+                            break
+            except Exception:
+                pass
+
+        # If still missing AEP, scan parent folder names for tokens like AEP/ARI/1 in X
+        if not s1:
+            try:
+                parts = [q for q in p.parts[-5:]]  # look up to 5 levels up
+                for txt in reversed(parts):  # closest parents first
+                    s1f, _, s3f = _extract_tokens(txt)
+                    if s1f:
+                        s1 = s1f
+                        if not s3 and s3f:
+                            s3 = s3f
+                        break
+            except Exception:
+                pass
+
+        # Build short name
+        parts = []
+        if s1:
+            parts.append(s1)
+        if s2:
+            parts.append(s2)
+        if s3:
+            parts.append(s3)
+
+        if parts:
+            short = "_".join(parts)
+        else:
+            short = stem
+
+        # Keep it short and filesystem-safe
+        short = re.sub(r"[^A-Za-z0-9_]+", "", short)
+        if len(short) > 40:
+            short = short[:40]
+        return short
+    ts1_short = _short_ts1(ts1_path) if ts1_path else "synthetic"
+    MODEL_DIR = outputs_root / ts1_short
+    # Optional variant tag allows caller to separate runs (e.g., different grids)
+    variant_tag = str(config.get("output_variant_tag", "")).strip()
+    if variant_tag:
+        MODEL_DIR = MODEL_DIR / variant_tag
+    # Create directories
+    inputs_dir.mkdir(parents=True, exist_ok=True)
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Model naming (<=16 chars)
+    BASE_MODEL_NAME = "bas32"
+    mode_suffix = "vert" if infil_mode.startswith("v") else ("full" if infil_mode.startswith("f") else infil_mode[:4])
+    MODEL_NAME = f"{BASE_MODEL_NAME}_{mode_suffix}"[:16]
+
+    # Read storm
+    # Optional TS1 column preference
+    ts1_col = config.get("ts1_column_index")
+    storm_data = None
+    try:
+        if ts1_path and Path(ts1_path).exists():
+            storm_data = read_ts1_file(ts1_path, preferred_column=ts1_col, allow_synthetic=False)
+    except Exception:
+        storm_data = None
+    if storm_data is None:
+        # Fallback to synthetic hydrograph
+        storm_data = generate_synthetic_storm()
+    # Save inflow CSV in outputs subfolder
+    try:
+        inflow_csv = MODEL_DIR / 'inflow_timeseries.csv'
+        inflow_df = pd.DataFrame({
+            'time_hours': storm_data['time_hours'].values,
+            'time_days': storm_data['time_hours'].values / 24.0,
+            'flow_m3s': storm_data['flow_m3s'].values,
+            'flow_m3day': storm_data['flow_m3s'].values * 86400.0,
+        })
+        inflow_df.to_csv(inflow_csv, index=False)
+    except Exception:
+        pass
+    # Save TS1 inputs (provenance + hydrograph) under inputs/<ts1_short>/
+    try:
+        from shutil import copy2
+        ts1_in_dir = inputs_dir / ts1_short
+        ts1_in_dir.mkdir(parents=True, exist_ok=True)
+        # Copy original TS1 (or companion if detected)
+        try:
+            src_info = inspect_ts1_columns(ts1_path)
+            src_used = src_info.get('source_path', ts1_path)
+        except Exception:
+            src_used = ts1_path
+        try:
+            copy2(src_used, ts1_in_dir / Path(src_used).name)
+        except Exception:
+            pass
+        # Write parsed hydrograph CSV
+        hydro_csv = ts1_in_dir / 'hydrograph.csv'
+        pd.DataFrame({
+            'time_hours': storm_data['time_hours'].values,
+            'time_minutes': storm_data['time_hours'].values * 60.0,
+            'flow_m3s': storm_data['flow_m3s'].values,
+            'flow_m3day': storm_data['flow_m3s'].values * 86400.0,
+        }).to_csv(hydro_csv, index=False)
+        # Plot hydrograph image
+        try:
+            import matplotlib.pyplot as _plt
+            fig, ax = _plt.subplots(figsize=(8, 4))
+            ax.plot(storm_data['time_hours'].values, storm_data['flow_m3s'].values, 'b-', lw=2)
+            ax.set_xlabel('Time (hours)')
+            ax.set_ylabel('Flow (m3/s)')
+            ax.set_title('Input Hydrograph')
+            ax.grid(True, alpha=0.3)
+            fig.tight_layout()
+            fig.savefig(ts1_in_dir / 'hydrograph.png', dpi=150)
+            _plt.close(fig)
+        except Exception:
+            pass
+    except Exception:
+        pass
+    # Save inputs parameters as CSV and PNG under inputs/
+    try:
+        params_csv = inputs_dir / 'parameters.csv'
+        param_rows = []
+        def add_param(section, name, value):
+            param_rows.append({"section": section, "name": name, "value": value})
+        # Basin
+        add_param("basin", "length_floor_m", basin_geom.length_floor)
+        add_param("basin", "width_floor_m", basin_geom.width_floor)
+        add_param("basin", "max_depth_m", basin_geom.max_depth)
+        add_param("basin", "side_slope_hv", basin_geom.side_slope_hv)
+        add_param("basin", "floor_elev_mAHD", basin_geom.floor_elev)
+        # Aquifer
+        add_param("aquifer", "initial_head_mAHD", initial_groundwater_head)
+        add_param("aquifer", "k_horizontal_mpd", k_horizontal)
+        add_param("aquifer", "k_vertical_mpd", k_vertical)
+        add_param("aquifer", "sy", sy)
+        add_param("aquifer", "ss", ss)
+        add_param("aquifer", "bottom_elev_mAHD", (bottom_elev if bottom_elev is not None else ""))
+        # Infiltration
+        add_param("infiltration", "mode", infil.get("mode", "vertical"))
+        add_param("infiltration", "bed_thickness_m", bed_thk)
+        add_param("infiltration", "bed_k_mpd", bed_k_mpd)
+        add_param("infiltration", "side_k_mpd", ("" if side_k_mpd is None else side_k_mpd))
+        # Time control
+        add_param("time", "post_storm_days", post_days)
+        add_param("time", "post_storm_step_hours", post_step_h)
+        pd.DataFrame(param_rows).to_csv(params_csv, index=False)
+        # Render a styled table PNG
+        try:
+            from utils.style_guide import render_table_png, prettify_name
+            # prettify labels
+            rows = [[str(r['section']), prettify_name(str(r['name'])), r['value']] for r in param_rows]
+            cols = ["section", "parameter", "value"]
+            render_table_png(rows, cols, str(inputs_dir / 'parameters.png'), title='Model Parameters')
+        except Exception:
+            pass
+    # 3D geometry snapshot removed to keep runs lightweight
+    except Exception:
+        pass
+
+    # Grid setup
+    nlay = 8
+    # Use a generous minimum domain factor so boundaries are far from the basin
+    dom_factor = suggest_domain_factor(basin_geom, min_factor=12.0, pad_multiplier=4.0)
+    # Allow grid overrides via config["grid"]
+    grid_cfg = config.get("grid", {}) if isinstance(config.get("grid", {}), dict) else {}
+    refinement_zones = int(grid_cfg.get("refinement_zones", 4))
+    max_cell_size = float(grid_cfg.get("max_cell_size", 25.0))
+    # Domain factor override
+    domain_factor_override = grid_cfg.get("domain_factor")
+    if domain_factor_override is not None:
+        try:
+            dom_factor = float(domain_factor_override)
+        except Exception:
+            pass
+    # If explicit min_cell_size not given, compute from performance profile
+    if "min_cell_size" in grid_cfg:
+        min_cell_size = float(grid_cfg.get("min_cell_size"))
+    else:
+        try:
+            from utils.performance_profiles import compute_min_cell_size_from_basin
+            perf_cfg = config.get("perf", {}) if isinstance(config.get("perf", {}), dict) else {}
+            perf_mode = perf_cfg.get("mode")  # 'fast' | 'balanced' | 'accurate'
+            perf_div = perf_cfg.get("divisor")
+            perf_floor = perf_cfg.get("min_floor_m")
+            min_cell_size = compute_min_cell_size_from_basin(
+                basin_length_m=basin_geom.length_floor,
+                basin_width_m=basin_geom.width_floor,
+                divisor=perf_div,
+                min_floor_m=perf_floor,
+                mode=perf_mode,
+            )
+        except Exception:
+            min_cell_size = 2.0
+    # Enforce lower bound of 0.5 m per user requirement
+    if min_cell_size < 0.5:
+        min_cell_size = 0.5
+    grid_info = create_adaptive_refined_grid(
+        basin_length=basin_geom.length_floor,
+        basin_width=basin_geom.width_floor,
+        domain_factor=float(dom_factor),
+        refinement_zones=refinement_zones,
+        min_cell_size=min_cell_size,
+        max_cell_size=max_cell_size,
+    )
+    nrow, ncol = grid_info['nrow'], grid_info['ncol']
+    delr, delc = grid_info['delr'], grid_info['delc']
+    basin_rows = grid_info['basin_rows']
+    basin_cols = grid_info['basin_cols']
+    basin_cells_2d = [(r, c) for r in range(basin_rows[0], basin_rows[1]) for c in range(basin_cols[0], basin_cols[1])]
+
+    layer_thickness = [2, 3, 5, 8, 10, 12, 15, 20]
+    # Select a top that sits above basin floor + max depth and initial GW
+    top_baseline = max(10.0, basin_geom.floor_elev + basin_geom.max_depth + 3.0, initial_groundwater_head + 2.0)
+    top = float(top_baseline)
+    if bottom_elev is not None:
+        try:
+            bottom_elev = float(bottom_elev)
+            if bottom_elev >= top:
+                top = bottom_elev + 1.0
+            total_thk = top - bottom_elev
+            w = np.array(layer_thickness, dtype=float)
+            frac = w / np.sum(w)
+            thk_scaled = (frac * total_thk).tolist()
+            thk_scaled = [max(0.5, t) for t in thk_scaled]
+            diff = total_thk - sum(thk_scaled)
+            thk_scaled[-1] += diff
+            botm = [top - sum(thk_scaled[:i+1]) for i in range(nlay)]
+        except Exception:
+            botm = [top - sum(layer_thickness[:i+1]) for i in range(nlay)]
+    else:
+        botm = [top - sum(layer_thickness[:i+1]) for i in range(nlay)]
+    basin_floor = float(basin_geom.floor_elev)
+    lakebed_thickness = bed_thk
+    lake_initial_stage = basin_floor
+
+    conn_layer = None
+    for k in range(nlay):
+        lay_top = top if k == 0 else botm[k-1]
+        lay_bot = botm[k]
+        if lay_bot < basin_floor <= lay_top:
+            conn_layer = k
+            break
+    if conn_layer is None:
+        for k in range(nlay):
+            if basin_floor > botm[k]:
+                conn_layer = k
+                break
+    if conn_layer is None:
+        conn_layer = 0
+    basin_cells = [(conn_layer, r, c) for (r, c) in basin_cells_2d]
+
+    # Time discretization
+    storm_duration_h = float(np.max(storm_data['time_hours'].values))
+    total_sim_hours = storm_duration_h + post_days * 24.0
+    stress_periods, inflow_per_sp = create_time_varying_stress_periods(
+        storm_data,
+        total_sim_hours,
+        post_storm_step_hours=post_step_h,
+    )
+    # Progress metadata path
+    meta_path = Path(MODEL_DIR) / 'run_meta.json'
+    try:
+        steps_per_period = [int(sp[1]) for sp in stress_periods]
+        total_steps = int(np.sum(steps_per_period))
+        init_meta = {
+            "run_id": run_id,
+            "scenario_title": scenario_title,
+            "ts1_short": ts1_short,
+            "total_periods": len(stress_periods),
+            "total_steps": total_steps,
+            "completed_periods": 0,
+            "completed_steps": 0,
+            "current_period": 0,
+            "current_timestep": 0,
+            "steps_in_current_period": 0,
+            "state": "building",
+        }
+        with open(meta_path, 'w') as fp:
+            json.dump(init_meta, fp)
+    except Exception:
+        pass
+
+    # Simulation
+    sim = flopy.mf6.MFSimulation(
+        sim_name=MODEL_NAME,
+        sim_ws=str(MODEL_DIR),
+        exe_name=find_mf6_exe()
+    )
+    tdis_data = [[sp_length / 24.0, nsteps, mult] for sp_length, nsteps, mult in stress_periods]
+    tdis = flopy.mf6.ModflowTdis(sim, time_units="DAYS", nper=len(stress_periods), perioddata=tdis_data)
+    # Pre-run validation and solver choice
+    warns = validate_basin_configuration(basin_geom, initial_groundwater_head, bottom_elev)
+    if warns:
+        print("\n⚠️ Configuration warnings:")
+        for w in warns:
+            print(f"   - {w}")
+    needs_relax = (
+        basin_geom.max_depth > 3.0 or
+        basin_geom.side_slope_hv < 1.5 or
+        abs(basin_geom.floor_elev - initial_groundwater_head) < 0.5
+    )
+    if needs_relax:
+        print("   🔧 Challenging geometry detected → relaxed IMS settings")
+        ims = flopy.mf6.ModflowIms(
+            sim,
+            print_option="SUMMARY",
+            complexity="COMPLEX",
+            outer_dvclose=2e-3,
+            outer_maximum=700,
+            under_relaxation="DBD",
+            under_relaxation_theta=0.7,
+            under_relaxation_kappa=0.1,
+            linear_acceleration="BICGSTAB",
+            reordering_method="rcm",
+            inner_maximum=700,
+            inner_dvclose=2e-5,
+            rcloserecord=[0.02, "STRICT"],
+            backtracking_number=20,
+            backtracking_tolerance=2.0,
+            backtracking_reduction_factor=0.2,
+            backtracking_residual_limit=0.0,
+        )
+    else:
+        ims = flopy.mf6.ModflowIms(
+            sim,
+            print_option="SUMMARY",
+            complexity="COMPLEX",
+            outer_dvclose=5e-4,
+            outer_maximum=400,
+            under_relaxation="DBD",
+            linear_acceleration="BICGSTAB",
+            reordering_method="rcm",
+            inner_maximum=400,
+            inner_dvclose=5e-6,
+            rcloserecord=[0.005, "STRICT"],
+            backtracking_number=10,
+            backtracking_tolerance=1.0,
+            backtracking_reduction_factor=0.3,
+            backtracking_residual_limit=0.0,
+        )
+    gwf = flopy.mf6.ModflowGwf(sim, modelname=MODEL_NAME, save_flows=True, newtonoptions="NEWTON UNDER_RELAXATION")
+    dis = flopy.mf6.ModflowGwfdis(gwf, nlay=nlay, nrow=nrow, ncol=ncol, delr=delr, delc=delc, top=top, botm=botm)
+    # Auto-adjust initial GW if too close to basin floor
+    if initial_groundwater_head >= basin_geom.floor_elev - 0.1:
+        print(f"   🔧 Adjusting initial groundwater to {basin_geom.floor_elev - 1.0:.2f} m (1 m below floor)")
+        initial_groundwater_head = basin_geom.floor_elev - 1.0
+    ic = flopy.mf6.ModflowGwfic(gwf, strt=initial_groundwater_head)
+    npf = flopy.mf6.ModflowGwfnpf(gwf, save_flows=True, icelltype=1, k=k_horizontal, k33=k_vertical)
+    sto = flopy.mf6.ModflowGwfsto(gwf, save_flows=True, iconvert=1, ss=ss, sy=sy)
+
+    # General Head Boundary (edges) — support single-layer (connection layer) or all layers
+    def _as_array(v, n):
+        return np.array(v) if hasattr(v, '__len__') else np.full(n, v)
+    delr_arr = _as_array(delr, ncol)
+    delc_arr = _as_array(delc, nrow)
+    ghb_list = []
+    K_edge = float(k_horizontal)
+    # Allow caller to override boundary conductance multiplier and head offset
+    try:
+        ghb_mult = float(config.get("boundary_conductance_multiplier", 100.0))
+    except Exception:
+        ghb_mult = 100.0
+    try:
+        head_offset = float(config.get("boundary_head_offset_m", 0.0))
+    except Exception:
+        head_offset = 0.0
+    boundary_layers_mode = str(config.get("boundary_layers", "all")).lower()
+    use_all_layers = (boundary_layers_mode != "single")
+
+    # Helper to compute per-layer thickness and valid boundary head
+    def _layer_top(k):
+        return top if k == 0 else botm[k - 1]
+    def _layer_bot(k):
+        return botm[k]
+
+    for i in range(nrow):
+        for j in range(ncol):
+            if not (i == 0 or i == nrow - 1 or j == 0 or j == ncol - 1):
+                continue
+            if j == 0 or j == ncol - 1:
+                width = float(delc_arr[i]); distance = max(0.5 * float(delr_arr[j]), 1e-6)
+            else:
+                width = float(delr_arr[j]); distance = max(0.5 * float(delc_arr[i]), 1e-6)
+
+            k_layers = range(nlay) if use_all_layers else [conn_layer]
+            for k in k_layers:
+                lay_top = _layer_top(k)
+                lay_bot = _layer_bot(k)
+                layer_thk = float(lay_top - lay_bot)
+                if layer_thk <= 0:
+                    layer_thk = 1.0
+                # Apply optional boundary head offset; enforce MF6 minimum (>= cell bottom)
+                ghb_head_min = float(lay_bot) + max(1e-3, 1e-3 * layer_thk)
+                ghb_head_eff = max(float(initial_groundwater_head) - head_offset, ghb_head_min)
+                conductance = ghb_mult * (K_edge * width * layer_thk / distance)
+                ghb_list.append([k, i, j, ghb_head_eff, conductance])
+
+    ghb = flopy.mf6.ModflowGwfghb(gwf, stress_period_data=ghb_list, save_flows=True)
+
+    # Output control (lightweight option saves only LAST to reduce size)
+    if lightweight_outputs:
+        saverec = [("HEAD", "LAST"), ("BUDGET", "LAST")]
+    else:
+        saverec = [("HEAD", "ALL"), ("BUDGET", "ALL")]
+    oc = flopy.mf6.ModflowGwfoc(
+        gwf,
+        budget_filerecord=f"{MODEL_NAME}.bud",
+        head_filerecord=f"{MODEL_NAME}.hds",
+        saverecord=saverec,
+        printrecord=[("HEAD", "LAST"), ("BUDGET", "LAST")],
+    )
+
+    # LAKTAB and LAK
+    # If a custom depth–area table is provided, convert it to LAKTAB rows
+    laktab_rows = None
+    try:
+        cda = config.get("custom_depth_area")
+        if isinstance(cda, (list, tuple)) and len(cda) >= 2:
+            # cda: [[depth_m, area_m2], ...] relative to floor; monotonic by depth
+            import numpy as _np
+            rows_da = [(float(d), float(a)) for d, a in cda if float(d) >= 0 and float(a) > 0]
+            rows_da.sort(key=lambda x: x[0])
+            if len(rows_da) >= 2:
+                # Compute cumulative volume via trapezoidal integration of area vs depth
+                depths = _np.array([r[0] for r in rows_da], dtype=float)
+                areas = _np.array([r[1] for r in rows_da], dtype=float)
+                vols = _np.zeros_like(depths)
+                for i in range(1, len(depths)):
+                    dd = depths[i] - depths[i-1]
+                    vols[i] = vols[i-1] + 0.5 * (areas[i] + areas[i-1]) * dd
+                # Convert to (stage, volume, sarea)
+                laktab_rows = [(float(basin_geom.floor_elev + depths[i]), float(vols[i]), float(areas[i])) for i in range(len(depths))]
+    except Exception:
+        laktab_rows = None
+    if laktab_rows is None:
+        laktab_rows = generate_tapered_laktab(basin_geom, nrows=41)
+    lak_file = create_lak_with_time_series(
+        basin_cells,
+        storm_data,
+        stress_periods,
+        str(MODEL_DIR),
+        MODEL_NAME,
+        basin_floor,
+        lakebed_thickness,
+        lake_initial_stage,
+        laktab_rows=laktab_rows,
+        lake_surface_area_m2=basin_geom.length_floor * basin_geom.width_floor,
+        table_stage_max_offset=basin_geom.max_depth,
+        lakebed_k=(bed_k_mpd/86400.0),
+        infiltration_mode=infil_mode,
+        side_k=(None if side_k_mpd is None else side_k_mpd/86400.0),
+        aligned_inflows_m3s=inflow_per_sp,
+        delr=delr,
+        delc=delc,
+        nrow=nrow,
+        ncol=ncol,
+        layer_thickness=(top - botm[conn_layer]),
+        max_depth=basin_geom.max_depth,
+        spill_linear_extension_m=10.0,
+        bed_leak_multiplier=float(config.get("bed_leak_multiplier", 1.0)),
+    )
+
+    # Persist model metadata for this run
+    try:
+        import json as _json
+        crest_elev = float(basin_geom.floor_elev + basin_geom.max_depth)
+        meta = {
+            "floor_elev_mAHD": float(basin_geom.floor_elev),
+            "crest_elev_mAHD": crest_elev,
+            "max_depth_m": float(basin_geom.max_depth),
+            "spill_extension_m": 10.0,
+            "infiltration_mode": infil_mode,
+        }
+        with open(Path(MODEL_DIR) / 'model_meta.json', 'w') as _fp:
+            _json.dump(meta, _fp, indent=2)
+    except Exception:
+        pass
+
+    # Write and add LAK to name file
+    sim.write_simulation()
+    gwf_nam_file = Path(MODEL_DIR) / f"{MODEL_NAME}.nam"
+    with open(gwf_nam_file, 'r') as f:
+        nam_lines = f.readlines()
+    add_lines = []
+    need_write = False
+    has_lak = any('LAK6' in line for line in nam_lines)
+    for line in nam_lines:
+        if 'OC6' in line and not has_lak:
+            add_lines.append(f"  LAK6  {Path(lak_file).name}\n"); need_write = True
+        add_lines.append(line)
+    if need_write:
+        with open(gwf_nam_file, 'w') as f:
+            f.writelines(add_lines)
+
+    # Run with live progress by parsing stdout for STRESS PERIOD/TIME STEP
+    success = False
+    try:
+        import subprocess, re, time
+        # Ensure meta has totals, including steps
+        steps_per_period = [int(sp[1]) for sp in stress_periods]
+        total_steps = int(np.sum(steps_per_period))
+        cum_steps = np.concatenate(([0], np.cumsum(steps_per_period)[:-1]))
+        # Initialize meta
+        try:
+            with open(meta_path, 'r') as fp:
+                meta = json.load(fp)
+        except Exception:
+            meta = {}
+        meta.update({
+            "run_id": run_id,
+            "total_periods": len(stress_periods),
+            "total_steps": int(total_steps),
+            "completed_periods": 0,
+            "completed_steps": 0,
+            "current_period": 0,
+            "current_timestep": 0,
+            "steps_in_current_period": 0,
+            "state": "running",
+        })
+        try:
+            with open(meta_path, 'w') as fp:
+                json.dump(meta, fp)
+        except Exception:
+            pass
+        # Initialize GUI progress file if requested
+        if progress_file:
+            try:
+                with open(progress_file, 'w') as pf:
+                    json.dump({"current": 0, "total": int(total_steps)}, pf)
+            except Exception:
+                pass
+
+        try:
+            exe_path = find_mf6_exe()
+        except Exception as e:
+            # Return early with a helpful error summary
+            summary = {
+                "success": False,
+                "error": f"MODFLOW 6 executable not found: {e}",
+                "ts1_file": str(ts1_path),
+                "scenario": scenario_title,
+                "model_name": MODEL_NAME,
+            }
+            return False, summary, str(MODEL_DIR)
+
+        from collections import deque
+        recent_lines = deque(maxlen=200)
+        proc = subprocess.Popen([exe_path], cwd=str(MODEL_DIR), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+
+        sp_cur = 0
+        ts_cur = 0
+        # Robust, case-insensitive patterns: allow any non-digit separator (colon, equals, spaces)
+        pat_sp = re.compile(r"stress\s*period[:\s=]*([0-9]+)", re.IGNORECASE)
+        pat_ts = re.compile(r"time\s*step[:\s=]*([0-9]+)", re.IGNORECASE)
+        pat_both = re.compile(r"Solving[^\d]*stress\s*period[:\s=]*([0-9]+)[^\d]+time\s*step[:\s=]*([0-9]+)", re.IGNORECASE)
+        while True:
+            line = proc.stdout.readline() if proc.stdout else ''
+            if not line:
+                if proc.poll() is not None:
+                    break
+                time.sleep(0.05)
+                continue
+            # print through for console visibility when running from CLI
+            try:
+                print(line, end="")
+            except Exception:
+                pass
+            try:
+                recent_lines.append(line)
+            except Exception:
+                pass
+            mb = pat_both.search(line)
+            msp = pat_sp.search(line) if not mb else None
+            mts = pat_ts.search(line) if not mb else None
+            updated = False
+            if mb:
+                sp_cur = int(mb.group(1)); ts_cur = int(mb.group(2)); updated = True
+            elif msp:
+                sp_cur = int(msp.group(1))
+                ts_cur = 0  # reset until TIME STEP seen
+                updated = True
+            if mts:
+                ts_cur = int(mts.group(1))
+                updated = True
+            if updated and sp_cur > 0:
+                # Compute completed counts
+                completed_periods = max(0, sp_cur - 1)
+                step_base = int(cum_steps[sp_cur - 1]) if (sp_cur - 1) < len(cum_steps) else total_steps
+                steps_in_cur = int(steps_per_period[sp_cur - 1]) if (sp_cur - 1) < len(steps_per_period) else 0
+                # Count current timestep as progress but cap to steps in period
+                completed_steps = min(total_steps, step_base + min(max(0, ts_cur), steps_in_cur))
+                try:
+                    with open(meta_path, 'r') as fp:
+                        meta_now = json.load(fp)
+                except Exception:
+                    meta_now = dict(meta)
+                meta_now.update({
+                    "run_id": run_id,
+                    "completed_periods": int(completed_periods),
+                    "completed_steps": int(completed_steps),
+                    "current_period": int(sp_cur),
+                    "current_timestep": int(ts_cur),
+                    "steps_in_current_period": int(steps_in_cur),
+                    "state": "running",
+                })
+                try:
+                    with open(meta_path, 'w') as fp:
+                        json.dump(meta_now, fp)
+                except Exception:
+                    pass
+                # Update external progress file with (current/total) for GUI
+                if progress_file:
+                    try:
+                        with open(progress_file, 'w') as pf:
+                            json.dump({"current": int(completed_steps), "total": int(total_steps)}, pf)
+                    except Exception:
+                        pass
+
+        # Wait for MF6 to finish
+        rc = proc.wait()
+        success = (rc == 0)
+        if not success:
+            try:
+                tail_txt = ''.join(list(recent_lines))
+                with open(Path(MODEL_DIR) / 'mf6_tail.log', 'w', encoding='utf-8') as fp:
+                    fp.write(tail_txt)
+                with open(Path(MODEL_DIR) / 'last_error.txt', 'w', encoding='utf-8') as fp:
+                    fp.write(f"mf6 exited with code {rc}\n\nTail:\n{tail_txt}")
+            except Exception:
+                pass
+    except Exception:
+        # Ensure we propagate to finally with failure state
+        success = False
+    finally:
+        # After run, mark saving state (GUI will set bar to 100% shortly after)
+        try:
+            with open(meta_path, 'r') as fp:
+                meta = json.load(fp)
+        except Exception:
+            meta = {"total_periods": len(stress_periods), "total_steps": int(np.sum([sp[1] for sp in stress_periods]))}
+        meta.update({
+            "run_id": run_id,
+            "completed_periods": meta.get("total_periods", len(stress_periods)),
+            "completed_steps": meta.get("total_steps", int(np.sum([sp[1] for sp in stress_periods]))),
+            "state": "saving",
+        })
+        try:
+            with open(meta_path, 'w') as fp:
+                json.dump(meta, fp)
+        except Exception:
+            pass
+        # Force GUI progress to full at end
+        if progress_file:
+            try:
+                total_steps = int(meta.get("total_steps", 0))
+                with open(progress_file, 'w') as pf:
+                    json.dump({"current": int(total_steps), "total": int(total_steps)}, pf)
+            except Exception:
+                pass
+
+    # If failed once, do a single retry with extra-stable settings
+    if not success:
+        try:
+            print("\n🔁 Retry: enabling more conservative solver and finer end-of-storm steps...\n")
+            # Adjust IMS tolerances in-place via new simulation write (reuse inputs)
+            # Slightly increase max iterations and relax closures
+            try:
+                ims = flopy.mf6.ModflowIms(
+                    sim,
+                    print_option="SUMMARY",
+                    complexity="COMPLEX",
+                    outer_dvclose=5e-3,
+                    outer_maximum=900,
+                    under_relaxation="DBD",
+                    under_relaxation_theta=0.7,
+                    under_relaxation_kappa=0.2,
+                    linear_acceleration="BICGSTAB",
+                    reordering_method="rcm",
+                    inner_maximum=900,
+                    inner_dvclose=5e-5,
+                    rcloserecord=[0.05, "STRICT"],
+                    backtracking_number=25,
+                    backtracking_tolerance=2.0,
+                    backtracking_reduction_factor=0.2,
+                    backtracking_residual_limit=0.0,
+                )
+            except Exception:
+                pass
+            sim.write_simulation()
+            try:
+                exe_path = find_mf6_exe()
+            except Exception as e:
+                success = False
+                # If we cannot locate mf6 on retry, bail with same early return
+                summary = {
+                    "success": False,
+                    "error": f"MODFLOW 6 executable not found: {e}",
+                    "ts1_file": str(ts1_path),
+                    "scenario": scenario_title,
+                    "model_name": MODEL_NAME,
+                }
+                return False, summary, str(MODEL_DIR)
+            proc = subprocess.Popen([exe_path], cwd=str(MODEL_DIR), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            while True:
+                line = proc.stdout.readline() if proc.stdout else ''
+                if not line:
+                    if proc.poll() is not None:
+                        break
+                    time.sleep(0.05)
+                    continue
+                try:
+                    print(line, end="")
+                except Exception:
+                    pass
+            rc = proc.wait()
+            success = (rc == 0)
+        except Exception:
+            success = False
+
+    # Visualize
+    try:
+        visualize_results(str(MODEL_DIR), MODEL_NAME, nrow, ncol, delr, delc)
+    except Exception:
+        pass
+    # Mark final state (done/failed)
+    try:
+        with open(meta_path, 'r') as fp:
+            meta = json.load(fp)
+        meta.update({"run_id": run_id, "state": ("done" if success else "failed")})
+        with open(meta_path, 'w') as fp:
+            json.dump(meta, fp)
+    except Exception:
+        pass
+
+    # Build summary
+    from time import perf_counter as _pc
+    # Note: run duration approx from logs isn't tracked; compute from files' mtime difference if possible
+    try:
+        _t0 = Path(MODEL_DIR) / f"{MODEL_NAME}.nam"
+        _t1 = Path(MODEL_DIR) / f"{MODEL_NAME}.lst"
+        runtime_seconds = float(max(0.0, (_t1.stat().st_mtime - _t0.stat().st_mtime))) if (_t0.exists() and _t1.exists()) else None
+    except Exception:
+        runtime_seconds = None
+    summary = {
+        "ts1_file": str(ts1_path),
+        "scenario": scenario_title,
+        "ts1_short": ts1_short,
+        "model_name": MODEL_NAME,
+        "infiltration_mode": infil_mode,
+        "bed_thickness_m": bed_thk,
+        "bed_k_mpd": bed_k_mpd,
+        "side_k_mpd": side_k_mpd,
+    "success": bool(success),
+    **({"runtime_seconds": float(runtime_seconds)} if runtime_seconds is not None else {}),
+    }
+    if not success:
+        try:
+            err_file = Path(MODEL_DIR) / 'last_error.txt'
+            if err_file.exists():
+                summary['error'] = err_file.read_text(encoding='utf-8')[:4000]
+        except Exception:
+            pass
+    # Compute metrics
+    try:
+        stage_csv = Path(MODEL_DIR) / f"{MODEL_NAME}_lak_stage.csv"
+        inflow_csv = Path(MODEL_DIR) / 'inflow_timeseries.csv'
+        wb_csv = Path(MODEL_DIR) / 'water_balance_timeseries.csv'
+        crest_elev = None
+        try:
+            import json as _json
+            meta_path = Path(MODEL_DIR) / 'model_meta.json'
+            if meta_path.exists():
+                with open(meta_path, 'r') as fp:
+                    _meta = _json.load(fp)
+                crest_elev = float(_meta.get('crest_elev_mAHD'))
+        except Exception:
+            crest_elev = None
+        if stage_csv.exists():
+            dfs = pd.read_csv(stage_csv)
+            ts_days = dfs.iloc[:,0].values.astype(float)
+            stg = dfs.iloc[:,1].values.astype(float)
+            peak_idx = int(np.nanargmax(stg))
+            peak_stage = float(np.nanmax(stg))
+            peak_time_days = float(ts_days[peak_idx])
+            # detention time from peak until stage returns to near floor (within 0.01 m)
+            floor = basin_floor
+            threshold = floor + 0.01
+            post = stg[peak_idx:]
+            tt = ts_days[peak_idx:]
+            last_above_idx = None
+            for i in range(len(post)):
+                if post[i] > threshold:
+                    last_above_idx = i
+            if last_above_idx is None:
+                detention_hours = 0.0
+            else:
+                detention_hours = float(tt[last_above_idx] - peak_time_days) * 24.0
+            summary.update({
+                "peak_stage_m": peak_stage,
+                "peak_time_days": peak_time_days,
+                "detention_time_hours": detention_hours,
+            })
+            # Spill detection
+            if crest_elev is not None and np.nanmax(stg) > crest_elev + 1e-6:
+                summary.update({
+                    "spill_detected": True,
+                    "spill_max_exceedance_m": float(np.nanmax(stg) - crest_elev),
+                    "warning": "Basin spilled; results beyond crest are for stability only."
+                })
+            else:
+                summary.setdefault("spill_detected", False)
+        # Prefer robust metrics from water balance CSV if available
+        if wb_csv.exists():
+            try:
+                dfw = pd.read_csv(wb_csv)
+                summary["cumulative_inflow_m3"] = float(dfw['cum_inflow_m3'].values[-1])
+                summary["cumulative_infiltration_m3"] = float(dfw['cum_infiltrated_m3'].values[-1])
+                summary["peak_storage_m3"] = float(np.nanmax(dfw['storage_m3'].values.astype(float)))
+            except Exception:
+                pass
+        # Fallback: integrate inflow directly if water balance not present
+        if 'cumulative_inflow_m3' not in summary and inflow_csv.exists():
+            try:
+                dfi = pd.read_csv(inflow_csv)
+                t_sec = dfi['time_hours'].values * 3600.0
+                q = dfi['flow_m3s'].values
+                vol = float(np.trapezoid(q, t_sec)) if hasattr(np, 'trapezoid') else float(np.trapz(q, t_sec))
+                summary["inflow_total_m3"] = vol
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Persist summary
+    try:
+        with open(Path(MODEL_DIR) / 'scenario_summary.json', 'w') as fp:
+            json.dump(summary, fp, indent=2)
+    except Exception:
+        pass
+
+    # Optional cleanup of heavy files after visualization and summary
+    if cleanup_heavy:
+        try:
+            # Keep .lst per requirement; remove only heavy binary outputs
+            for ext in (".bud", ".hds"):
+                p = Path(MODEL_DIR) / f"{MODEL_NAME}{ext}"
+                if p.exists():
+                    p.unlink()
+        except Exception:
+            pass
+
+    return success, summary, str(MODEL_DIR)
