@@ -640,6 +640,21 @@ import axios from 'axios'
 import 'leaflet/dist/leaflet.css'
 import * as L from 'leaflet'
 
+const getApiBase = () => {
+  const url = import.meta.env.VITE_API_URL;
+  if (!url) return 'http://localhost:8000';
+  return url.startsWith('http') ? url : `https://${url}`;
+};
+
+const getWsBase = () => {
+  const url = import.meta.env.VITE_API_URL;
+  if (!url) return 'ws://localhost:8000';
+  return url.startsWith('http') ? url.replace(/^http/, 'ws') : `wss://${url}`;
+};
+
+const API_BASE = getApiBase();
+const WS_BASE = getWsBase();
+
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -860,7 +875,7 @@ onMounted(() => {
 const fetchClimateData = async () => {
   isFetchingClimate.value = true
   try {
-    const resp = await axios.post('http://localhost:8000/api/fetch-climate', {
+    const resp = await axios.post(`${API_BASE}/api/fetch-climate`, {
       lat: climateLocation.value.lat,
       lon: climateLocation.value.lon
     })
@@ -1052,7 +1067,7 @@ const handleTS1Upload = async (event) => {
       const formData = new FormData()
       formData.append('file', file)
       try {
-        const r = await axios.post('http://localhost:8000/api/upload-ts1', formData)
+        const r = await axios.post(`${API_BASE}/api/upload-ts1`, formData)
         config.value.ts1_files.push(r.data.filepath)
       } catch (err) {
         console.error('Failed local TS1 upload', err)
@@ -1259,10 +1274,10 @@ const submitJob = async () => {
   
   if (runLocally.value) {
     try {
-      const resp = await axios.post('http://localhost:8000/api/simulate', config.value)
+      const resp = await axios.post(`${API_BASE}/api/simulate`, config.value)
       currentJobId.value = resp.data.simulation_id
       
-      const ws = new WebSocket(`ws://localhost:8000/ws/${currentJobId.value}`)
+      const ws = new WebSocket(`${WS_BASE}/ws/${currentJobId.value}`)
       ws.onmessage = (e) => {
         const data = JSON.parse(e.data)
         if (data.type === 'progress') {
