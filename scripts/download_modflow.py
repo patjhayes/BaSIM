@@ -55,11 +55,21 @@ def get_asset_url(version: str | None) -> tuple[str, str]:
     tag = data.get("tag_name") or ""
     ver = tag.lstrip("mf") if tag else (version or get_latest_version())
     assets = data.get("assets") or []
-    # Prefer windows zip
+    # Detect OS
+    is_windows = sys.platform == "win32"
+    is_mac = sys.platform == "darwin"
+    
+    # Prefer appropriate platform zip
     candidates = []
     for a in assets:
         name = (a.get("name") or "").lower()
-        if "window" in name or "win" in name:
+        if is_windows and ("window" in name or "win" in name):
+            if name.endswith('.zip'):
+                candidates.append(a.get("browser_download_url"))
+        elif is_mac and "mac" in name:
+            if name.endswith('.zip'):
+                candidates.append(a.get("browser_download_url"))
+        elif not is_windows and not is_mac and "linux" in name:
             if name.endswith('.zip'):
                 candidates.append(a.get("browser_download_url"))
     if not candidates and assets:
@@ -86,10 +96,16 @@ def main():
         ver, url = get_asset_url(ver_arg)
     except Exception as e:
         print(f"Failed to resolve release via API: {e}")
-        # Fallback to pinned URL pattern (may 404 if naming changed)
+        # Fallback to pinned URL pattern
         ver = ver_arg or get_latest_version()
         tag = f"mf{ver}"
-        url = f"https://github.com/MODFLOW-USGS/modflow6/releases/download/{tag}/{tag}_win64.zip"
+        if sys.platform == "win32":
+            os_slug = "win64"
+        elif sys.platform == "darwin":
+            os_slug = "mac"
+        else:
+            os_slug = "linux"
+        url = f"https://github.com/MODFLOW-USGS/modflow6/releases/download/{tag}/{tag}_{os_slug}.zip"
     root = Path(__file__).resolve().parents[1]
     out_dir = root / "bin"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -102,11 +118,11 @@ def main():
     print("Extracting to bin/ ...")
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
-            # Extract mf6.exe and DLLs from anywhere in archive
             extracted = []
             for m in z.infolist():
                 name = Path(m.filename).name.lower()
-                if name == 'mf6.exe' or name.endswith('.dll'):
+                # On Windows look for .exe and .dll, on Linux/Mac look for binary with no extension or .so/.dylib
+                if name == 'mf6.exe' or name == 'mf6' or name.endswith('.dll') or name.endswith('.so') or name.endswith('.dylib'):
                     target = out_dir / Path(m.filename).name
                     with z.open(m) as src, open(target, 'wb') as dst:
                         dst.write(src.read())
@@ -120,11 +136,19 @@ def main():
     except Exception as e:
         print(f"Extraction failed: {e}")
         sys.exit(1)
-    # Sanity check
-    mf6 = out_dir / ("mf6.exe" if os.name == "nt" else "mf6")
+    # Sanity check and execution permissions
+    mf6 = out_dir / ("mf6.exe" if sys.platform == "win32" else "mf6")
     if not mf6.exists():
-        print("mf6.exe not found after extraction; check the archive layout.")
+        print(f"{mf6.name} not found after extraction; check the archive layout.")
         sys.exit(2)
+        
+    if sys.platform != "win32":
+        try:
+            mf6.chmod(mf6.stat().st_mode | 0o111)
+            print(f"Made {mf6.name} executable.")
+        except Exception as e:
+            print(f"Warning: could not set executable bit on {mf6.name}: {e}")
+            
     print(f"Done. mf6 at {mf6}")
 
 

@@ -1,0 +1,24 @@
+services:
+  # Backend Web Service (Python/FastAPI)
+  - type: web
+    name: basim-backend
+    env: python
+    buildCommand: "python scripts/download_modflow.py && pip install -r requirements.txt"
+    startCommand: "python -m uvicorn src.api.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+
+  # Frontend Static Site (Vue/Vite)
+  - type: web
+    name: basim-frontend
+    env: static
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "./frontend/dist"
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: basim-backend
+          property: host
+        # Optional: Prefix with https:// if you construct the full URL in your frontend
