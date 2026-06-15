@@ -12,10 +12,13 @@ services:
   # Frontend Static Site (Vue/Vite)
   - type: web
     name: basim-frontend
-    env: static
-    buildCommand: "cd frontend && npm install && npm run build"
-    staticPublishPath: "./frontend/dist"
+    runtime: static
+    rootDir: frontend
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: "./dist"
     envVars:
+      - key: NODE_VERSION
+        value: "20.18.0"
       - key: VITE_API_URL
         fromService:
           type: web
