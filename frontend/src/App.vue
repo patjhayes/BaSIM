@@ -10,6 +10,7 @@
             </div>
             <nav class="flex space-x-4">
               <router-link to="/" class="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">Design</router-link>
+              <router-link to="/calibrate" class="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">Calibration</router-link>
               <router-link to="/billing" class="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">Project Billing</router-link>
               <router-link to="/help" class="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">Help</router-link>
             </nav>

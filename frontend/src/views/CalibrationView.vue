@@ -475,7 +475,8 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  ScatterController
 } from 'chart.js'
 import { Line, Scatter } from 'vue-chartjs'
 
@@ -487,7 +488,8 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  ScatterController
 )
 
 const chartOptions = {

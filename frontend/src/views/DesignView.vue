@@ -695,9 +695,10 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  ScatterController
 } from 'chart.js'
-import { Line } from 'vue-chartjs'
+import { Line, Scatter } from 'vue-chartjs'
 
 ChartJS.register(
   CategoryScale,
@@ -707,7 +708,8 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  ScatterController
 )
 
 const chartOptions = {
