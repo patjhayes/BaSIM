@@ -201,7 +201,7 @@ def run_simulation(ts1_path: str, config: dict):
         ])
         
         g = Gridgen(dis_base, model_ws=str(workspace), exe_name=gridgen_exe)
-        g.add_refinement_features([basin_poly], featuretype="polygon", level=5, layers=list(range(nlay)))
+        g.add_refinement_features([basin_poly], featuretype="polygon", level=4, layers=list(range(nlay)))
         import time
         max_build_retries = 5
         for attempt in range(max_build_retries):

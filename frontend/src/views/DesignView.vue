@@ -86,7 +86,7 @@
                 </div>
               </div>
               <button @click="fetchClimateData" :disabled="isFetchingClimate" class="mt-2 w-full bg-indigo-100 text-indigo-700 py-1.5 px-3 text-sm rounded-md hover:bg-indigo-200 font-semibold transition-colors disabled:opacity-50">
-                {{ isFetchingClimate ? '⏳ Scraping BOM & ARR DataHub...' : '📡 Fetch Climate Data' }}
+                {{ isFetchingClimate ? '⏳ Fetching BOM & ARR DataHub...' : '📡 Fetch Climate Data' }}
               </button>
             </div>
 
@@ -403,7 +403,7 @@
         </div>
         <button @click="submitJob" :disabled="isRunning || (!isValid && !runLocally)" class="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed font-medium shadow-md">
           <span v-if="!isRunning && !runLocally">🚀 Submit to Queue (1 Token)</span>
-          <span v-else-if="!isRunning && runLocally">💻 Run Locally</span>
+          <span v-else-if="!isRunning && runLocally">💻 Run</span>
           <span v-else>⏳ Running...</span>
         </button>
         <p v-if="!isValid && !runLocally" class="text-red-500 text-sm mt-2">Project Code, Company ID, and User ID are required for cloud runs.</p>
