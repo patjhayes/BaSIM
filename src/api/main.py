@@ -44,7 +44,7 @@ logger = logging.getLogger("basim.api")
 
 app = FastAPI(title="BaSIM API", version="0.1.0")
 
-# CORS for local dev (Vue vite server)
+# CORS for local dev (Vue vite server) and Render frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -55,6 +55,7 @@ app.add_middleware(
         "http://localhost:5175",
         "http://127.0.0.1:5175",
     ],
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
