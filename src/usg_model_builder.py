@@ -167,7 +167,6 @@ def run_simulation(ts1_path: str, config: dict):
     try:
         custom_coords = config.get("basin_geometry", {}).get("custom_polygon_coords")
         if custom_coords and len(custom_coords) >= 3:
-            import numpy as np
             pts = np.array(custom_coords)
             min_x, max_x = np.min(pts[:, 0]), np.max(pts[:, 0])
             min_y, max_y = np.min(pts[:, 1]), np.max(pts[:, 1])
@@ -208,7 +207,6 @@ def run_simulation(ts1_path: str, config: dict):
         
         if custom_coords and len(custom_coords) >= 3:
             # Re-center custom polygon to middle of domain
-            import numpy as np
             pts = np.array(custom_coords)
             c_x = np.mean(pts[:, 0])
             c_y = np.mean(pts[:, 1])
