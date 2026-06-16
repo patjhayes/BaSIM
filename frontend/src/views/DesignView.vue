@@ -748,10 +748,6 @@ const durationChartOptions = {
   }
 }
 
-    }
-  }
-}
-
 const geometryChartOptions = {
   responsive: true,
   maintainAspectRatio: false,
