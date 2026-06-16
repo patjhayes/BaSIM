@@ -233,7 +233,10 @@ async def simulate(cfg: Dict, bg: BackgroundTasks):
 
 
 async def dispatch_simulation(sim_id: str, config: Dict):
+    """Background task to set up and dispatch Celery tasks."""
     try:
+        await asyncio.sleep(1.5)  # Give the WebSocket a chance to connect before blasting messages
+        
         redis_client.publish(f"sim:{sim_id}", json.dumps({"type": "progress", "progress": 5, "message": "Dispatching to workers..."}))
         
         inflow_source = config.get("inflow_source", "ilsax")
