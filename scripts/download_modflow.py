@@ -138,18 +138,45 @@ def main():
         sys.exit(1)
     # Sanity check and execution permissions
     mf6 = out_dir / ("mf6.exe" if sys.platform == "win32" else "mf6")
-    if not mf6.exists():
-        print(f"{mf6.name} not found after extraction; check the archive layout.")
-        sys.exit(2)
-        
-    if sys.platform != "win32":
-        try:
+    if mf6.exists():
+        if sys.platform != "win32":
             mf6.chmod(mf6.stat().st_mode | 0o111)
-            print(f"Made {mf6.name} executable.")
-        except Exception as e:
-            print(f"Warning: could not set executable bit on {mf6.name}: {e}")
-            
-    print(f"Done. mf6 at {mf6}")
+            # Also chmod libmf6.so if it exists
+            libmf6 = out_dir / "libmf6.so"
+            if libmf6.exists():
+                libmf6.chmod(libmf6.stat().st_mode | 0o111)
+        print(f"Done. mf6 at {mf6}")
+    else:
+        print("Warning: mf6 not found after extraction.")
+        
+    # --- ADDED: Download mfusg and gridgen from MODFLOW-USGS/executables ---
+    if sys.platform == "win32":
+        usgs_os_slug = "win64"
+        targets = ['mfusg.exe', 'gridgen.exe']
+    elif sys.platform == "darwin":
+        usgs_os_slug = "mac"
+        targets = ['mfusg', 'gridgen']
+    else:
+        usgs_os_slug = "linux"
+        targets = ['mfusg', 'gridgen']
+        
+    usgs_url = f"https://github.com/MODFLOW-USGS/executables/releases/latest/download/{usgs_os_slug}.zip"
+    print(f"\nDownloading MODFLOW-USG and Gridgen from {usgs_url} ...")
+    try:
+        usgs_data = download_bytes(usgs_url)
+        with zipfile.ZipFile(io.BytesIO(usgs_data)) as z:
+            for m in z.infolist():
+                name = Path(m.filename).name.lower()
+                if name in targets:
+                    target = out_dir / Path(m.filename).name
+                    with z.open(m) as src, open(target, 'wb') as dst:
+                        dst.write(src.read())
+                    if sys.platform != "win32":
+                        target.chmod(target.stat().st_mode | 0o111)
+                    print(f"  + {target.name}")
+        print("Done downloading mfusg and gridgen.")
+    except Exception as e:
+        print(f"Failed to download or extract USGS executables: {e}")
 
 
 if __name__ == "__main__":
