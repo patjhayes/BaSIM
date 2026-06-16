@@ -8,6 +8,11 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.0
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: basim-redis
+          property: connectionString
 
   # Frontend Static Site (Vue/Vite)
   - type: web
@@ -25,3 +30,30 @@ services:
           name: basim-backend
           envVarKey: RENDER_EXTERNAL_URL
         # Optional: Prefix with https:// if you construct the full URL in your frontend
+
+  # Background Worker (Celery)
+  - type: worker
+    name: basim-compute-worker
+    env: python
+    buildCommand: "python scripts/download_modflow.py && pip install -r requirements.txt"
+    startCommand: "celery -A src.api.worker.celery_app worker --loglevel=info"
+    autoscaling:
+      enabled: true
+      minInstances: 1
+      maxInstances: 10
+      criteria:
+        cpu:
+          percentage: 70
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: basim-redis
+          property: connectionString
+
+  # Redis Broker
+  - type: redis
+    name: basim-redis
+    ipAllowList: []

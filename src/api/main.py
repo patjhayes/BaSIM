@@ -15,9 +15,18 @@ from pathlib import Path
 from datetime import datetime
 import logging
 import sys
-from concurrent.futures import ThreadPoolExecutor
-
-sim_executor = ThreadPoolExecutor(max_workers=2)
+import os
+import json
+from celery import chord
+from src.api.worker import (
+    run_ilsax_task,
+    run_ts1_task,
+    finalize_ilsax_ensemble,
+    finalize_ts1_batch,
+    simulation_error_callback,
+    redis_client
+)
+import redis.asyncio as redis_async
 
 # Ensure project root on sys.path for existing modules
 ROOT = Path(__file__).resolve().parents[2]
@@ -219,15 +228,13 @@ async def simulate(cfg: Dict, bg: BackgroundTasks):
         "started_at": datetime.utcnow().isoformat(),
     }
     
-    bg.add_task(run_simulation_task, sim_id, cfg)
+    bg.add_task(dispatch_simulation, sim_id, cfg)
     return {"simulation_id": sim_id, "status": "started", "message": "Simulation started"}
 
 
-async def run_simulation_task(sim_id: str, config: Dict):
+async def dispatch_simulation(sim_id: str, config: Dict):
     try:
-        await manager.send(sim_id, {"type": "progress", "progress": 5, "message": "Initializing model engine..."})
-        loop = asyncio.get_event_loop()
-        from src.usg_model_builder import run_simulation
+        redis_client.publish(f"sim:{sim_id}", json.dumps({"type": "progress", "progress": 5, "message": "Dispatching to workers..."}))
         
         inflow_source = config.get("inflow_source", "ilsax")
         
@@ -239,48 +246,16 @@ async def run_simulation_task(sim_id: str, config: Dict):
             if not ts1_files:
                 raise RuntimeError("No TS1 files provided")
                 
-            await manager.send(sim_id, {"type": "progress", "progress": 20, "message": f"Running {len(ts1_files)} TS1 simulations..."})
+            redis_client.publish(f"sim:{sim_id}", json.dumps({"type": "progress", "progress": 20, "message": f"Dispatching {len(ts1_files)} TS1 simulations..."}))
             
-            async def run_ts1(filepath: str):
-                cfg_copy = dict(config)
-                cfg_copy["sim_id"] = sim_id
-                run_name = Path(filepath).stem
-                await manager.send(sim_id, {"type": "subtask_started", "run_name": run_name})
-                try:
-                    def _run():
-                        return run_simulation(ts1_path=filepath, config=cfg_copy)
-                    res = await loop.run_in_executor(sim_executor, _run)
-                except Exception as e:
-                    await manager.send(sim_id, {"type": "subtask_completed", "run_name": run_name, "ok": False, "error": str(e)})
-                    raise
-                await manager.send(sim_id, {"type": "subtask_completed", "run_name": run_name, "ok": res[0]})
-                return res
-                
-            tasks = [run_ts1(f) for f in ts1_files]
-            run_results = await asyncio.gather(*tasks)
-            
-            parsed_results = []
-            for filepath, (ok, summary, ts_payload, outdir) in zip(ts1_files, run_results):
-                parsed_results.append({
-                    "filename": Path(filepath).name,
-                    "ok": ok,
-                    "peak_stage": summary.get("peak_stage_m") or summary.get("peak_stage"),
-                    "peak_storage": summary.get("peak_storage_m3") or summary.get("total_infiltration"),
-                    "inflow_total": summary.get("inflow_total_m3"),
-                    "summary": summary,
-                    "timeseries": ts_payload
-                })
-            
-            results = {
-                "type": "ts1_batch",
-                "runs": parsed_results
-            }
+            header = [run_ts1_task.s(f, config, sim_id) for f in ts1_files]
+            callback = finalize_ts1_batch.s(sim_id).on_error(simulation_error_callback.s(sim_id))
+            chord(header)(callback)
             
         else:
             # ILSAX Ensemble Mode
             ensemble_rainfalls = config.get("ensemble_rainfalls", [])
             if not ensemble_rainfalls:
-                # Fallback to single run if ensemble array not provided
                 if not config.get("rainfall", {}).get("depths_mm"):
                     raise RuntimeError("No rainfall data provided for ILSAX run")
                 ensemble_rainfalls = [{
@@ -291,89 +266,17 @@ async def run_simulation_task(sim_id: str, config: Dict):
                     "depths_mm": config["rainfall"]["depths_mm"]
                 }]
             
-            await manager.send(sim_id, {"type": "progress", "progress": 20, "message": f"Running {len(ensemble_rainfalls)} ILSAX ensemble simulations..."})
+            redis_client.publish(f"sim:{sim_id}", json.dumps({"type": "progress", "progress": 20, "message": f"Dispatching {len(ensemble_rainfalls)} ILSAX ensemble simulations..."}))
             
-            async def run_ilsax(run_info: Dict):
-                cfg_copy = dict(config)
-                cfg_copy["rainfall"] = {
-                    "timestep_minutes": run_info["timestep_minutes"],
-                    "depths_mm": run_info["depths_mm"]
-                }
-                run_name = run_info.get("run_name", "synthetic")
-                cfg_copy["run_name"] = run_name
-                cfg_copy["sim_id"] = sim_id
-                
-                await manager.send(sim_id, {"type": "subtask_started", "run_name": run_name})
-                
-                try:
-                    def _run():
-                        return run_simulation(ts1_path="", config=cfg_copy)
-                    ok, summary, ts_payload, outdir = await loop.run_in_executor(sim_executor, _run)
-                except Exception as e:
-                    await manager.send(sim_id, {"type": "subtask_completed", "run_name": run_name, "ok": False, "error": str(e)})
-                    raise
-                
-                await manager.send(sim_id, {"type": "subtask_completed", "run_name": run_name, "ok": ok})
-                
-                return {
-                    "run_info": run_info,
-                    "ok": ok,
-                    "peak_stage": float(summary.get("peak_stage_m") or summary.get("peak_stage", 0.0)),
-                    "summary": summary,
-                    "timeseries": ts_payload
-                }
-                
-            tasks = [run_ilsax(r) for r in ensemble_rainfalls]
-            completed_runs = await asyncio.gather(*tasks)
-            
-            # Group by duration
-            grouped = {}
-            for r in completed_runs:
-                dur = r["run_info"]["duration_minutes"]
-                if dur not in grouped:
-                    grouped[dur] = []
-                grouped[dur].append(r)
-                
-            duration_summaries = {}
-            for dur, runs in grouped.items():
-                # Sort by peak stage descending
-                runs_sorted = sorted(runs, key=lambda x: x["peak_stage"], reverse=True)
-                
-                # 5th highest is median if there are 10. We just take index 4 if len >= 5, else mid
-                if len(runs_sorted) >= 10:
-                    median_run = runs_sorted[4] # 5th highest
-                else:
-                    median_run = runs_sorted[len(runs_sorted) // 2]
-                    
-                max_run = runs_sorted[0]
-                
-                duration_summaries[dur] = {
-                    "median_peak_stage": median_run["peak_stage"],
-                    "max_peak_stage": max_run["peak_stage"],
-                    "median_run": median_run,
-                    "max_run": max_run,
-                    "all_runs": runs_sorted
-                }
-            
-            # Find critical duration (highest median peak stage)
-            critical_dur = max(duration_summaries.keys(), key=lambda d: duration_summaries[d]["median_peak_stage"])
-            
-            results = {
-                "type": "ilsax_ensemble",
-                "durations": duration_summaries,
-                "critical_duration": critical_dur
-            }
-
-        simulations[sim_id]["status"] = "completed"
-        simulations[sim_id]["results"] = results
-        await manager.send(sim_id, {"type": "progress", "progress": 100, "message": "Simulation complete"})
-        await manager.send(sim_id, {"type": "complete", "results": results})
+            header = [run_ilsax_task.s(r, config, sim_id) for r in ensemble_rainfalls]
+            callback = finalize_ilsax_ensemble.s(sim_id).on_error(simulation_error_callback.s(sim_id))
+            chord(header)(callback)
         
     except Exception as e:
-        logger.error(f"Simulation {sim_id} failed: {e}", exc_info=True)
+        logger.error(f"Dispatch {sim_id} failed: {e}", exc_info=True)
         simulations[sim_id]["status"] = "failed"
         simulations[sim_id]["error"] = str(e)
-        await manager.send(sim_id, {"type": "error", "message": f"Simulation failed: {e}"})
+        redis_client.publish(f"sim:{sim_id}", json.dumps({"type": "error", "message": f"Dispatch failed: {e}"}))
 
 
 @app.get("/api/simulations/{sim_id}")
@@ -387,11 +290,35 @@ async def simulation_status(sim_id: str):
 @app.websocket("/ws/{client_id}")
 async def ws_progress(ws: WebSocket, client_id: str):
     await manager.connect(ws, client_id)
+    
+    celery_url = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+    r = redis_async.from_url(celery_url)
+    pubsub = r.pubsub()
+    await pubsub.subscribe(f"sim:{client_id}")
+    
+    async def reader():
+        try:
+            while True:
+                await ws.receive_text()
+        except Exception:
+            pass
+
+    async def writer():
+        try:
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    data = json.loads(message["data"])
+                    await manager.send(client_id, data)
+                    if data.get("type") in ("complete", "error"):
+                        break
+        except Exception as e:
+            logger.error(f"WS writer error: {e}")
+
     try:
-        while True:
-            # Keep-alive / consume client pings
-            await ws.receive_text()
-    except Exception:
+        await asyncio.gather(reader(), writer())
+    finally:
+        await pubsub.unsubscribe(f"sim:{client_id}")
+        await r.aclose()
         manager.disconnect(client_id)
 
 
