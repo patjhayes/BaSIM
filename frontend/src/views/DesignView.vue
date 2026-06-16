@@ -750,6 +750,24 @@ const durationChartOptions = {
   }
 }
 
+const stageStorageChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: {
+    mode: 'index',
+    intersect: false,
+  },
+  scales: {
+    x: {
+      type: 'linear',
+      title: { display: true, text: 'Volume (m³)' }
+    },
+    y: {
+      title: { display: true, text: 'Stage (m AHD)' }
+    }
+  }
+}
+
 const geometryChartOptions = {
   responsive: true,
   maintainAspectRatio: false,
