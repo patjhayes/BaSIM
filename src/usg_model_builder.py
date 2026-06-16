@@ -165,6 +165,15 @@ def run_simulation(ts1_path: str, config: dict):
     mode = config["infiltration"].get("mode", "full")
     
     try:
+        custom_coords = config.get("basin_geometry", {}).get("custom_polygon_coords")
+        if custom_coords and len(custom_coords) >= 3:
+            import numpy as np
+            pts = np.array(custom_coords)
+            min_x, max_x = np.min(pts[:, 0]), np.max(pts[:, 0])
+            min_y, max_y = np.min(pts[:, 1]), np.max(pts[:, 1])
+            basin_length = max_x - min_x
+            basin_width = max_y - min_y
+            
         # We need a base grid to refine from.
         # Gridgen is known to segfault on highly non-square base cells when refining deeply.
         # Let's force the base grid to be perfectly square.
@@ -195,10 +204,23 @@ def run_simulation(ts1_path: str, config: dict):
         # Basin polygon
         x0, y0 = (Lx - basin_length) / 2, (Ly - basin_width) / 2
         eps = 0.001123
-        basin_poly = Polygon([
-            (x0 + eps, y0 + eps), (x0 + basin_length - eps, y0 + eps), 
-            (x0 + basin_length - eps, y0 + basin_width - eps), (x0 + eps, y0 + basin_width - eps)
-        ])
+        custom_coords = config.get("basin_geometry", {}).get("custom_polygon_coords")
+        
+        if custom_coords and len(custom_coords) >= 3:
+            # Re-center custom polygon to middle of domain
+            import numpy as np
+            pts = np.array(custom_coords)
+            c_x = np.mean(pts[:, 0])
+            c_y = np.mean(pts[:, 1])
+            dx = (Lx / 2) - c_x
+            dy = (Ly / 2) - c_y
+            centered_pts = [(x + dx, y + dy) for x, y in custom_coords]
+            basin_poly = Polygon(centered_pts)
+        else:
+            basin_poly = Polygon([
+                (x0 + eps, y0 + eps), (x0 + basin_length - eps, y0 + eps), 
+                (x0 + basin_length - eps, y0 + basin_width - eps), (x0 + eps, y0 + basin_width - eps)
+            ])
         
         g = Gridgen(dis_base, model_ws=str(workspace), exe_name=gridgen_exe)
         g.add_refinement_features([basin_poly], featuretype="polygon", level=3, layers=list(range(nlay)))

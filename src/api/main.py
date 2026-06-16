@@ -168,6 +168,56 @@ async def upload_ts1(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/upload-observed")
+async def upload_observed(file: UploadFile = File(...)):
+    try:
+        up_dir = Path("model_input/observed_files/uploads")
+        up_dir.mkdir(parents=True, exist_ok=True)
+        dest = up_dir / file.filename
+        with dest.open("wb") as f:
+            f.write(await file.read())
+        return {"filepath": str(dest), "filename": file.filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/upload-shapefile")
+async def upload_shapefile(file: UploadFile = File(...)):
+    import zipfile
+    import shapefile
+    import shutil
+    try:
+        up_dir = Path("model_input/shapefiles/uploads")
+        up_dir.mkdir(parents=True, exist_ok=True)
+        zip_dest = up_dir / file.filename
+        with zip_dest.open("wb") as f:
+            f.write(await file.read())
+            
+        extract_dir = up_dir / file.filename.replace(".zip", "")
+        extract_dir.mkdir(exist_ok=True)
+        with zipfile.ZipFile(zip_dest, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+            
+        shp_file = next(extract_dir.glob("*.shp"), None)
+        if not shp_file:
+            raise ValueError("No .shp file found in the uploaded zip.")
+            
+        sf = shapefile.Reader(str(shp_file))
+        shapes = sf.shapes()
+        if not shapes:
+            raise ValueError("Shapefile contains no shapes.")
+            
+        # Get the first shape's points
+        points = shapes[0].points
+        
+        # Cleanup
+        shutil.rmtree(extract_dir, ignore_errors=True)
+        zip_dest.unlink(missing_ok=True)
+        
+        return {"points": points}
+    except Exception as e:
+        logger.error(f"Shapefile parsing failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/fetch-climate")
 async def fetch_climate(req: ClimateRequest):
     try:
@@ -252,7 +302,7 @@ async def dispatch_simulation(sim_id: str, config: Dict):
             redis_client.publish(f"sim:{sim_id}", json.dumps({"type": "progress", "progress": 20, "message": f"Dispatching {len(ts1_files)} TS1 simulations..."}))
             
             header = [run_ts1_task.s(f, config, sim_id) for f in ts1_files]
-            callback = finalize_ts1_batch.s(sim_id).on_error(simulation_error_callback.s(sim_id))
+            callback = finalize_ts1_batch.s(sim_id, config).on_error(simulation_error_callback.s(sim_id))
             chord(header)(callback)
             
         else:

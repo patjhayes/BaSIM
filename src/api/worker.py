@@ -142,12 +142,57 @@ def finalize_ilsax_ensemble(self, completed_runs: List[Dict], sim_id: str):
 
 
 @celery_app.task(bind=True)
-def finalize_ts1_batch(self, completed_runs: List[Dict], sim_id: str):
-    """Chord callback to aggregate TS1 results."""
+def finalize_ts1_batch(self, completed_runs: List[Dict], sim_id: str, config: Dict = None):
+    """Chord callback to aggregate TS1 results and optionally calculate NSE for calibration."""
+    if config is None:
+        config = {}
+        
     results = {
         "type": "ts1_batch",
         "runs": completed_runs
     }
+
+    observed_file = config.get("observed_data_file")
+    if observed_file and len(completed_runs) == 1 and completed_runs[0].get("ok"):
+        try:
+            import pandas as pd
+            import numpy as np
+            
+            # Read observed data (assumes CSV with headers, e.g. "Time", "Stage")
+            # We will grab first column as time (days) and second as stage (m)
+            df_obs = pd.read_csv(observed_file)
+            time_obs = df_obs.iloc[:, 0].values
+            stage_obs = df_obs.iloc[:, 1].values
+            
+            # Read modeled data
+            run_data = completed_runs[0]["timeseries"]
+            time_mod = np.array(run_data["time_days"])
+            stage_mod = np.array(run_data["stage_m"])
+            
+            # Interpolate modeled stage to match observed timestamps
+            stage_mod_interp = np.interp(time_obs, time_mod, stage_mod)
+            
+            # Compute NSE
+            mean_obs = np.mean(stage_obs)
+            numerator = np.sum((stage_mod_interp - stage_obs)**2)
+            denominator = np.sum((stage_obs - mean_obs)**2)
+            
+            if denominator > 0:
+                nse = 1.0 - (numerator / denominator)
+            else:
+                nse = 0.0
+                
+            results["calibration"] = {
+                "nse": float(nse),
+                "observed_time": time_obs.tolist(),
+                "observed_stage": stage_obs.tolist(),
+                "modeled_interpolated": stage_mod_interp.tolist()
+            }
+            publish_update(sim_id, {"type": "progress", "progress": 95, "message": f"Calibration NSE calculated: {nse:.3f}"})
+        except Exception as e:
+            logger.error(f"Failed to calculate NSE: {e}", exc_info=True)
+            results["calibration_error"] = str(e)
+
     publish_update(sim_id, {"type": "progress", "progress": 100, "message": "Simulation complete"})
     publish_update(sim_id, {"type": "complete", "results": results})
     return results

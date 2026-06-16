@@ -1,6 +1,4 @@
-git init
-git add .
+git config user.email "patrick.j.hayes@example.com"
+git config user.name "Patrick Hayes"
 git commit -m "Initial commit of BaSIM source code"
-git branch -M main
-git remote add origin https://github.com/patjhayes/BaSIM.git
 git push -u origin main

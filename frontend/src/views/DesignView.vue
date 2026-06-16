@@ -250,7 +250,15 @@
         <div class="bg-white rounded-lg shadow p-6">
           <h2 class="text-lg font-semibold text-gray-900 mb-4">Basin Geometry & Aquifer</h2>
           <div class="space-y-3">
-             <div class="grid grid-cols-2 gap-2">
+             <div class="mb-3">
+               <label class="text-xs text-gray-500 font-bold block mb-1">Geometry Type</label>
+               <select v-model="config.basin_geometry.geometry_mode" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                 <option value="rectangle">Standard Rectangle</option>
+                 <option value="shapefile">Custom Shapefile (.zip)</option>
+               </select>
+             </div>
+
+             <div v-if="config.basin_geometry.geometry_mode === 'rectangle'" class="grid grid-cols-2 gap-2">
                <div>
                  <label class="text-xs text-gray-500">Length (m)</label>
                  <input v-model.number="config.basin_geometry.length_floor" type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" min="1" step="0.5">
@@ -260,6 +268,21 @@
                  <input v-model.number="config.basin_geometry.width_floor" type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" min="1" step="0.5">
                </div>
              </div>
+
+             <div v-else class="bg-gray-50 p-3 rounded-md border border-gray-200">
+               <label class="text-xs text-gray-700 font-semibold mb-1 block">Upload Shapefile (.zip)</label>
+               <p class="text-xs text-gray-500 mb-2">Must contain .shp, .shx, and .dbf files representing the basin floor polygon.</p>
+               <input
+                 type="file"
+                 @change="handleShapefileUpload"
+                 accept=".zip"
+                 class="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+               >
+               <div v-if="config.basin_geometry.custom_polygon_coords?.length > 0" class="mt-2 text-xs text-green-600 font-medium">
+                 ✓ Polygon loaded ({{ config.basin_geometry.custom_polygon_coords.length }} points)
+               </div>
+             </div>
+             
              <div class="grid grid-cols-2 gap-2">
                <div>
                 <label class="text-xs text-gray-500">Floor Elev (m AHD)</label>
@@ -313,6 +336,14 @@
               <h3 class="text-sm font-semibold text-gray-800 mb-2">Stage-Storage Curve</h3>
               <div class="h-48 w-full">
                 <Line ref="chartStageStorage" :data="stageStorageChartData" :options="stageStorageChartOptions" />
+              </div>
+            </div>
+            
+            <!-- Basin Geometry Map -->
+            <div class="pt-4 border-t mt-4 border-gray-200">
+              <h3 class="text-sm font-semibold text-gray-800 mb-2">Basin Footprint Map</h3>
+              <div class="h-48 w-full bg-white border border-gray-200 rounded-md p-2">
+                <Scatter ref="chartGeometry" :data="geometryChartData" :options="geometryChartOptions" />
               </div>
             </div>
           </div>
@@ -717,20 +748,26 @@ const durationChartOptions = {
   }
 }
 
-const stageStorageChartOptions = {
+    }
+  }
+}
+
+const geometryChartOptions = {
   responsive: true,
   maintainAspectRatio: false,
-  interaction: {
-    mode: 'index',
-    intersect: false,
+  plugins: {
+    legend: { display: false }
   },
   scales: {
     x: {
       type: 'linear',
-      title: { display: true, text: 'Volume (m³)' }
+      title: { display: true, text: 'X (m)' },
+      grid: { display: true }
     },
     y: {
-      title: { display: true, text: 'Stage (m AHD)' }
+      type: 'linear',
+      title: { display: true, text: 'Y (m)' },
+      grid: { display: true }
     }
   }
 }
@@ -782,6 +819,8 @@ const config = ref({
   },
   ensemble_rainfalls: [],
   basin_geometry: {
+    geometry_mode: 'rectangle', // 'rectangle' or 'shapefile'
+    custom_polygon_coords: [],
     length_floor: 20.0,
     width_floor: 20.0,
     max_depth: 2.0,
@@ -815,11 +854,29 @@ const stageStorageChartData = computed(() => {
   
   const data = []
   const steps = 20
-  for (let i = 0; i <= steps; i++) {
-    const h = (max_depth * i) / steps
-    // V(h) = L*W*h + z*(L+W)*h^2 + (4/3)*z^2*h^3
-    const volume = L * W * h + z * (L + W) * h * h + (4.0 / 3.0) * z * z * h * h * h
-    data.push({ x: volume, y: h + (geom.floor_elev || 0) })
+  
+  if (geom.geometry_mode === 'shapefile' && geom.custom_polygon_coords && geom.custom_polygon_coords.length > 2) {
+    // Calculate area of custom polygon
+    let area = 0
+    const pts = geom.custom_polygon_coords
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      area += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1])
+    }
+    area = Math.abs(area / 2.0)
+    
+    for (let i = 0; i <= steps; i++) {
+      const h = (max_depth * i) / steps
+      // Approximate as vertical walls for storage curve visualization
+      const volume = area * h
+      data.push({ x: volume, y: h + (geom.floor_elev || 0) })
+    }
+  } else {
+    for (let i = 0; i <= steps; i++) {
+      const h = (max_depth * i) / steps
+      // V(h) = L*W*h + z*(L+W)*h^2 + (4/3)*z^2*h^3
+      const volume = L * W * h + z * (L + W) * h * h + (4.0 / 3.0) * z * z * h * h * h
+      data.push({ x: volume, y: h + (geom.floor_elev || 0) })
+    }
   }
   
   return {
@@ -832,6 +889,39 @@ const stageStorageChartData = computed(() => {
       pointRadius: 0,
       fill: true,
       tension: 0.2
+    }]
+  }
+})
+
+const geometryChartData = computed(() => {
+  const geom = config.value.basin_geometry
+  let data = []
+  
+  if (geom.geometry_mode === 'shapefile' && geom.custom_polygon_coords && geom.custom_polygon_coords.length > 0) {
+    data = geom.custom_polygon_coords.map(pt => ({ x: pt[0], y: pt[1] }))
+  } else {
+    // Rectangle
+    const L = geom.length_floor || 20
+    const W = geom.width_floor || 20
+    data = [
+      { x: 0, y: 0 },
+      { x: L, y: 0 },
+      { x: L, y: W },
+      { x: 0, y: W },
+      { x: 0, y: 0 } // close loop
+    ]
+  }
+
+  return {
+    datasets: [{
+      label: 'Basin Footprint',
+      data: data,
+      borderColor: 'rgb(59, 130, 246)',
+      backgroundColor: 'rgba(59, 130, 246, 0.2)',
+      borderWidth: 2,
+      pointRadius: 3,
+      showLine: true,
+      fill: true,
     }]
   }
 })
@@ -1056,6 +1146,26 @@ const addOutlet = () => {
 
 const removeOutlet = (index) => {
   config.value.outlets.splice(index, 1)
+}
+
+const handleShapefileUpload = async (event) => {
+  const files = Array.from(event.target.files)
+  if (files.length === 0) return
+  
+  const file = files[0]
+  if (runLocally.value) {
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const r = await axios.post(`${API_BASE}/api/upload-shapefile`, formData)
+      config.value.basin_geometry.custom_polygon_coords = r.data.points
+    } catch (err) {
+      console.error('Failed local shapefile upload', err)
+      alert("Failed to process shapefile: " + (err.response?.data?.detail || err.message))
+    }
+  } else {
+    alert("Shapefile upload is currently only supported in Run Locally mode.")
+  }
 }
 
 const handleTS1Upload = async (event) => {
