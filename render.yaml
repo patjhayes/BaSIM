@@ -23,5 +23,5 @@ services:
         fromService:
           type: web
           name: basim-backend
-          property: host
+          envVarKey: RENDER_EXTERNAL_URL
         # Optional: Prefix with https:// if you construct the full URL in your frontend
