@@ -304,15 +304,23 @@ async def ws_progress(ws: WebSocket, client_id: str):
             pass
 
     async def writer():
+        import redis.exceptions
         try:
-            async for message in pubsub.listen():
-                if message["type"] == "message":
-                    data = json.loads(message["data"])
-                    await manager.send(client_id, data)
-                    if data.get("type") in ("complete", "error"):
-                        break
+            while True:
+                try:
+                    async for message in pubsub.listen():
+                        if message["type"] == "message":
+                            data = json.loads(message["data"])
+                            await manager.send(client_id, data)
+                            if data.get("type") in ("complete", "error"):
+                                return
+                except redis.exceptions.TimeoutError:
+                    continue
+                except Exception as e:
+                    logger.error(f"WS writer listen error: {e}")
+                    await asyncio.sleep(1)
         except Exception as e:
-            logger.error(f"WS writer error: {e}")
+            logger.error(f"WS writer fatal error: {e}")
 
     try:
         await asyncio.gather(reader(), writer())

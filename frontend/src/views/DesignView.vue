@@ -1316,10 +1316,10 @@ const submitJob = async () => {
       }
       
       ws.onclose = (e) => {
-        if (isRunning.value) {
-          isRunning.value = false
+        if (!queueError.value) {
           queueError.value = 'Server disconnected unexpectedly.'
         }
+        isRunning.value = false
       }
     } catch (err) {
       isRunning.value = false
