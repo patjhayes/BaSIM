@@ -48,7 +48,7 @@ def get_asset_url(version: str | None) -> tuple[str, str]:
     if urlreq is None:
         raise RuntimeError("urllib not available")
     base = "https://api.github.com/repos/MODFLOW-USGS/modflow6/releases"
-    url = f"{base}/latest" if not version else f"{base}/tags/mf{version}"
+    url = f"{base}/latest" if not version else f"{base}/tags/{version}"
     req = urlreq.Request(url, headers={"User-Agent": "basim-modflow-downloader"})
     with urlreq.urlopen(req) as resp:
         data = _json.loads(resp.read().decode("utf-8", "ignore"))
@@ -98,14 +98,14 @@ def main():
         print(f"Failed to resolve release via API: {e}")
         # Fallback to pinned URL pattern
         ver = ver_arg or get_latest_version()
-        tag = f"mf{ver}"
+        file_prefix = f"mf{ver}"
         if sys.platform == "win32":
             os_slug = "win64"
         elif sys.platform == "darwin":
             os_slug = "mac"
         else:
             os_slug = "linux"
-        url = f"https://github.com/MODFLOW-USGS/modflow6/releases/download/{tag}/{tag}_{os_slug}.zip"
+        url = f"https://github.com/MODFLOW-USGS/modflow6/releases/download/{ver}/{file_prefix}_{os_slug}.zip"
     root = Path(__file__).resolve().parents[1]
     out_dir = root / "bin"
     out_dir.mkdir(parents=True, exist_ok=True)
