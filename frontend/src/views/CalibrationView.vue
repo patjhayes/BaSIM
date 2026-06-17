@@ -151,6 +151,23 @@
                   <option value="full">Full (Bottom + Sidewalls)</option>
                 </select>
               </div>
+              <div class="mt-4 pt-3 border-t border-gray-200">
+                <label class="text-xs font-semibold text-gray-700 block mb-2">Infiltration Sizing Approach</label>
+                <div class="flex justify-between text-xs text-gray-500 px-1 mb-1">
+                  <span title="Minimizes the effect of initial soil suction. Best for continuous storm events or pre-saturated soil conditions. Results in a larger basin volume.">Conservative (Saturated)</span>
+                  <span title="Accounts heavily for initial dry-soil capillary suction. Best for isolated, brief storm events in well-drained soils. Results in a smaller basin volume.">Optimistic (Dry Soil)</span>
+                </div>
+                <input 
+                  type="range" 
+                  v-model.number="config.infiltration.h_threshold_pct" 
+                  min="0.1" 
+                  max="1.0" 
+                  step="0.05"
+                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  style="direction: rtl;"
+                >
+                <div class="text-center text-xs text-gray-400 mt-1">Design Head Threshold: {{ Math.round(config.infiltration.h_threshold_pct * 100) }}%</div>
+              </div>
             </div>
             
             <!-- Stage Storage Curve -->
@@ -596,13 +613,14 @@ const config = ref({
     initial_head: 1.0,
     aquifer_bottom: -20.0,
   },
-  infiltration: {
-    mode: 'vertical',
-    bed_thickness_m: 0.5,
-    bed_k_mpd: 5.0,
-    side_k_separate: false,
-    side_k_mpd: 5.0
-  },
+    infiltration: {
+      mode: 'vertical',
+      bed_thickness_m: 0.5,
+      bed_k_mpd: 5.0,
+      side_k_separate: false,
+      side_k_mpd: 5.0,
+      h_threshold_pct: 1.0
+    },
   outlets: [],
 })
 

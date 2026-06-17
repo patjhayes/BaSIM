@@ -157,11 +157,27 @@ def run_simulation(ts1_path: str, config: dict):
     bed_thick = float(config["infiltration"].get("bed_thickness_m", 0.5))
     if bed_thick < 0.01:
         bed_thick = 0.5
-    bed_k = float(config["infiltration"]["bed_k_mpd"])
+    bed_k_raw = float(config["infiltration"]["bed_k_mpd"])
     if config["infiltration"].get("side_k_separate", False):
-        side_k = float(config["infiltration"].get("side_k_mpd", bed_k))
+        side_k_raw = float(config["infiltration"].get("side_k_mpd", bed_k_raw))
     else:
-        side_k = bed_k
+        side_k_raw = bed_k_raw
+        
+    h_threshold_pct = float(config["infiltration"].get("h_threshold_pct", 1.0))
+    h_threshold = max(0.05, max_depth * h_threshold_pct)
+    
+    # Estimate capillary suction head based on native aquifer K
+    if k_horiz > 10.0:
+        psi = 0.05  # Sand / Gravel
+    elif k_horiz > 1.0:
+        psi = 0.06  # Loamy Sand
+    else:
+        psi = 0.11  # Finer soils
+        
+    # Translate to MODFLOW's Effective K for upstream-weighting seepage
+    bed_k = 0.5 * bed_k_raw * (1.0 + (bed_thick + psi) / h_threshold)
+    side_k = 0.5 * side_k_raw * (1.0 + (bed_thick + psi) / h_threshold)
+    
     mode = config["infiltration"].get("mode", "full")
     
     try:

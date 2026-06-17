@@ -166,6 +166,18 @@ The software includes comprehensive testing:
 
 Run all tests: `python src\test_functions.py`
 
+## 📐 Technical Justification: Infiltration Sizing Approach
+
+The public MODFLOW-USG engine utilizes an upstream weighting formulation that treats dry cell boundaries as gravity-driven seepage faces, omitting the capillary suction gradient ($\psi$). To preserve the computational speed and efficiency of unstructured quadtree grids without numerical instability, BaSIM upscales the user's clogged layer hydraulic conductivity to an Effective Conductivity ($K_{effective}$).
+
+This is achieved by setting the steady-state MODFLOW Darcy flux equal to the transient physical Green-Ampt infiltration flux at a user-selected design head threshold:
+
+$$K_{effective} = 0.5 \times K_{clog} \left( 1 + \frac{L_{clog} + \psi}{H_{threshold}} \right)$$
+
+*(Note: the $0.5$ scalar is a structural mapping factor required to equate physical Darcy flow with MODFLOW's unconfined half-thickness vertical conductance formulation).*
+
+The **Infiltration Sizing Approach** UI slider adjusts $H_{threshold}$ as a percentage of the maximum basin depth, allowing the user to select a mass-conservative lower bound for volume sizing, or an empirically grounded upper bound for rapid drawdown analysis.
+
 ## 🚀 Future Enhancements
 
 ### Planned Features
