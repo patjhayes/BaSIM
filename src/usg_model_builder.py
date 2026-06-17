@@ -463,28 +463,23 @@ def run_simulation(ts1_path: str, config: dict):
                 storage_m3_arr = stg2vol(stg_arr)
                 peak_storage_m3 = float(np.nanmax(storage_m3_arr))
                 
+                # Prepend the initial state (t=0)
                 t_sec = np.array(times, float) * 86400.0
-                dt = np.diff(t_sec)
+                t_all = np.concatenate([[0.0], t_sec])
+                
+                s_initial = stg2vol(floor_elev + 1e-4)
+                s_all = np.concatenate([[s_initial], storage_m3_arr])
+                
+                dt = np.diff(t_all)
                 dt = np.where(dt == 0.0, 1e-3, dt) # Prevent div by zero
-                dS = np.diff(storage_m3_arr)
-                dSdt = np.concatenate([[dS[0]/dt[0]], dS/dt])
+                dS = np.diff(s_all)
+                dSdt = dS / dt
                 
-                # Inflow in m3/s
-                q_in_m3s = flows_m3day / 86400.0
-                
-                # Because dSdt is the average rate of change over the interval [t, t+1],
-                # we need to use the average inflow over the same interval to compute infiltration.
-                avg_q_in_m3s = (q_in_m3s[:-1] + q_in_m3s[1:]) / 2.0
-                if len(avg_q_in_m3s) > 0:
-                    avg_q_in_m3s = np.concatenate([[avg_q_in_m3s[0]], avg_q_in_m3s])
-                else:
-                    avg_q_in_m3s = q_in_m3s
-
-                if len(avg_q_in_m3s) != len(dSdt):
-                    avg_q_in_m3s = np.resize(avg_q_in_m3s, len(dSdt))
+                # Inflow in m3/s. MODFLOW WEL package applies constant flow over the entire stress period.
+                q_in_m3s = flows_m3day[:len(dSdt)] / 86400.0
                 
                 # Modflow's exact net subsurface flux (m3/s) at each timestep
-                qinf_ts = avg_q_in_m3s - dSdt
+                qinf_ts = q_in_m3s - dSdt
                 
                 # We can just pass this exact array to the mass balance router
                 infiltration_rating = qinf_ts
