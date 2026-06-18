@@ -1,7 +1,7 @@
 import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
-from square.client import Client
+from square import Square
 from .auth_utils import get_current_user, get_current_admin, supabase_admin
 from pydantic import BaseModel
 
@@ -13,7 +13,7 @@ SQUARE_ENVIRONMENT = os.environ.get("SQUARE_ENVIRONMENT", "sandbox") # or 'produ
 SQUARE_LOCATION_ID = os.environ.get("SQUARE_LOCATION_ID", "placeholder")
 SQUARE_WEBHOOK_SIGNATURE_KEY = os.environ.get("SQUARE_WEBHOOK_SIGNATURE_KEY", "")
 
-square_client = Client(
+square_client = Square(
     access_token=SQUARE_ACCESS_TOKEN,
     environment=SQUARE_ENVIRONMENT,
 )
