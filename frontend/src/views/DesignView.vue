@@ -299,14 +299,53 @@
                <input v-model.number="config.basin_geometry.side_slope_1_in" type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" min="0" step="0.5">
              </div>
             
+            <div class="mt-4">
+              <label class="text-xs text-gray-500 block mb-1">Aquifer Material</label>
+              <select v-model="config.aquifer.soil_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                <option value="Custom">Custom</option>
+                <option value="Gravel">Gravel</option>
+                <option value="Sand">Sand</option>
+                <option value="Loamy Sand">Loamy Sand</option>
+                <option value="Sandy Loam">Sandy Loam</option>
+                <option value="Silt Loam">Silt Loam</option>
+                <option value="Clay">Clay</option>
+              </select>
+            </div>
+            
             <div class="grid grid-cols-2 gap-2 mt-2">
               <div>
-                <label class="text-xs text-gray-500">Aquifer K (m/day)</label>
-                <input v-model.number="config.aquifer.k_horizontal_mpd" type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" min="0.1" step="0.1">
+                <label class="text-xs text-gray-500">Aquifer Kh (m/day)</label>
+                <input v-model.number="config.aquifer.k_horizontal_mpd" type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" min="0.01" step="0.1">
               </div>
               <div>
                 <label class="text-xs text-gray-500">Initial Head (m AHD)</label>
                 <input v-model.number="config.aquifer.initial_head" type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" step="0.1">
+              </div>
+            </div>
+            
+            <div class="mt-2">
+              <button @click="advancedAquiferOpen = !advancedAquiferOpen" class="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center focus:outline-none">
+                <svg class="w-4 h-4 mr-1 transition-transform" :class="{'rotate-90': advancedAquiferOpen}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                Advanced Aquifer Parameters
+              </button>
+              
+              <div v-if="advancedAquiferOpen" class="mt-3 grid grid-cols-2 gap-2 bg-gray-50 p-3 rounded border border-gray-200">
+                <div>
+                  <label class="text-xs text-gray-500">Vertical Kv (m/day)</label>
+                  <input v-model.number="config.aquifer.k_vertical_mpd" type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" min="0.01" step="0.1">
+                </div>
+                <div>
+                  <label class="text-xs text-gray-500">Specific Yield (Sy)</label>
+                  <input v-model.number="config.aquifer.sy" type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" min="0.01" max="1.0" step="0.01">
+                </div>
+                <div>
+                  <label class="text-xs text-gray-500">Specific Storage (Ss)</label>
+                  <input v-model.number="config.aquifer.ss" type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" min="0.00001" step="0.0001">
+                </div>
+                <div>
+                  <label class="text-xs text-gray-500">Aq. Bottom (m AHD)</label>
+                  <input v-model.number="config.aquifer.aquifer_bottom" type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" step="1.0">
+                </div>
               </div>
             </div>
             
@@ -682,7 +721,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, onMounted, onUnmounted, watch } from 'vue'
 import { supabase } from '../supabase'
 import axios from 'axios'
 import 'leaflet/dist/leaflet.css'
@@ -805,6 +844,17 @@ const geometryChartOptions = {
   }
 }
 
+const soilPresets = {
+  Gravel: { k_h: 100.0, k_v: 100.0, sy: 0.25, ss: 1e-4 },
+  Sand: { k_h: 20.0, k_v: 20.0, sy: 0.20, ss: 1e-4 },
+  'Loamy Sand': { k_h: 5.0, k_v: 5.0, sy: 0.15, ss: 1e-4 },
+  'Sandy Loam': { k_h: 1.0, k_v: 1.0, sy: 0.10, ss: 1e-4 },
+  'Silt Loam': { k_h: 0.2, k_v: 0.2, sy: 0.08, ss: 1e-4 },
+  Clay: { k_h: 0.01, k_v: 0.01, sy: 0.02, ss: 1e-4 }
+}
+
+const advancedAquiferOpen = ref(false)
+
 const activeRightTab = ref('simulation')
 
 const config = ref({
@@ -861,6 +911,7 @@ const config = ref({
     floor_elev: 5.0,
   },
   aquifer: {
+    soil_type: 'Custom',
     k_horizontal_mpd: 10.0,
     k_vertical_mpd: 10.0,
     sy: 0.2,
@@ -1201,6 +1252,16 @@ const handleShapefileUpload = async (event) => {
     alert("Shapefile upload is currently only supported in Run Locally mode.")
   }
 }
+
+watch(() => config.value.aquifer.soil_type, (newVal) => {
+  if (newVal && soilPresets[newVal]) {
+    const preset = soilPresets[newVal]
+    config.value.aquifer.k_horizontal_mpd = preset.k_h
+    config.value.aquifer.k_vertical_mpd = preset.k_v
+    config.value.aquifer.sy = preset.sy
+    config.value.aquifer.ss = preset.ss
+  }
+})
 
 const handleTS1Upload = async (event) => {
   const files = Array.from(event.target.files)
