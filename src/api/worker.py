@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Union
 import redis
 from celery import Celery
 
@@ -68,16 +68,32 @@ def run_ilsax_task(self, run_info: Dict, config: Dict, sim_id: str):
 
 
 @celery_app.task(bind=True)
-def run_ts1_task(self, filepath: str, config: Dict, sim_id: str):
+def run_ts1_task(self, ts1_input: Union[str, Dict], config: Dict, sim_id: str):
     """Run a single TS1 simulation."""
-    run_name = Path(filepath).stem
+    import tempfile
+    import uuid
+    if isinstance(ts1_input, dict):
+        filename = ts1_input.get("name", f"storm_{uuid.uuid4().hex[:8]}.ts1")
+        content = ts1_input.get("content", "")
+        
+        tmp_dir = Path(tempfile.gettempdir()) / "basim_ts1"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        filepath = tmp_dir / filename
+        with open(filepath, "w", encoding='utf-8') as f:
+            f.write(content)
+        run_name = Path(filename).stem
+        actual_path = str(filepath)
+    else:
+        actual_path = str(ts1_input)
+        run_name = Path(actual_path).stem
+
     publish_update(sim_id, {"type": "subtask_started", "run_name": run_name})
 
     cfg_copy = dict(config)
     cfg_copy["sim_id"] = sim_id
 
     try:
-        ok, summary, ts_payload, outdir = run_simulation(ts1_path=filepath, config=cfg_copy)
+        ok, summary, ts_payload, outdir = run_simulation(ts1_path=actual_path, config=cfg_copy)
     except Exception as e:
         publish_update(sim_id, {"type": "subtask_completed", "run_name": run_name, "ok": False, "error": str(e)})
         raise
@@ -85,7 +101,7 @@ def run_ts1_task(self, filepath: str, config: Dict, sim_id: str):
     publish_update(sim_id, {"type": "subtask_completed", "run_name": run_name, "ok": ok})
 
     return {
-        "filename": Path(filepath).name,
+        "filename": Path(actual_path).name,
         "ok": ok,
         "peak_stage": float(summary.get("peak_stage_m") or summary.get("peak_stage", 0.0)),
         "peak_storage": float(summary.get("peak_storage_m3") or summary.get("total_infiltration", 0.0)),
@@ -152,15 +168,19 @@ def finalize_ts1_batch(self, completed_runs: List[Dict], sim_id: str, config: Di
         "runs": completed_runs
     }
 
-    observed_file = config.get("observed_data_file")
-    if observed_file and len(completed_runs) == 1 and completed_runs[0].get("ok"):
+    observed_input = config.get("observed_data_file")
+    if observed_input and len(completed_runs) == 1 and completed_runs[0].get("ok"):
         try:
             import pandas as pd
             import numpy as np
+            import io
             
-            # Read observed data (assumes CSV with headers, e.g. "Time", "Stage")
-            # We will grab first column as time (days) and second as stage (m)
-            df_obs = pd.read_csv(observed_file)
+            if isinstance(observed_input, dict):
+                content = observed_input.get("content", "")
+                df_obs = pd.read_csv(io.StringIO(content))
+            else:
+                df_obs = pd.read_csv(observed_input)
+
             time_obs = df_obs.iloc[:, 0].values
             stage_obs = df_obs.iloc[:, 1].values
             

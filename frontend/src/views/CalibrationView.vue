@@ -1039,24 +1039,8 @@ const handleTS1Upload = async (event) => {
   config.value.ts1_files = []
   
   const file = files[0] // only allow 1 for calibration
-  if (runLocally.value) {
-    const formData = new FormData()
-    formData.append('file', file)
-    try {
-      const r = await axios.post(`${API_BASE}/api/upload-ts1`, formData)
-      config.value.ts1_files.push(r.data.filepath)
-    } catch (err) {
-      console.error('Failed local TS1 upload', err)
-    }
-  } else {
-    try {
-      const filename = `${Date.now()}_${file.name}`
-      const { data, error } = await supabase.storage.from('ts1_files').upload(filename, file)
-      if (!error) config.value.ts1_files.push(data.path)
-    } catch (err) {
-      console.error('Failed cloud TS1 upload', err)
-    }
-  }
+  const text = await file.text()
+  config.value.ts1_files.push({ name: file.name, content: text })
 }
 
 const handleObservedUpload = async (event) => {
@@ -1064,29 +1048,9 @@ const handleObservedUpload = async (event) => {
   if (files.length === 0) return
   
   const file = files[0]
-  if (runLocally.value) {
-    const formData = new FormData()
-    formData.append('file', file)
-    try {
-      // Create new endpoint in backend for this
-      const r = await axios.post(`${API_BASE}/api/upload-observed`, formData)
-      config.value.observed_data_file = r.data.filepath
-      observedDataLoaded.value = true
-    } catch (err) {
-      console.error('Failed local observed upload', err)
-    }
-  } else {
-    try {
-      const filename = `${Date.now()}_${file.name}`
-      const { data, error } = await supabase.storage.from('observed_files').upload(filename, file)
-      if (!error) {
-        config.value.observed_data_file = data.path
-        observedDataLoaded.value = true
-      }
-    } catch (err) {
-      console.error('Failed cloud observed upload', err)
-    }
-  }
+  const text = await file.text()
+  config.value.observed_data_file = { name: file.name, content: text }
+  observedDataLoaded.value = true
 }
 
 const runLocally = ref(true)
@@ -1196,11 +1160,11 @@ const downloadReport = () => {
   <h2>Inflow Source Details (TS1 Calibration)</h2>
   <p>Externally Supplied Hydrographs (.ts1 files).</p>
   <ul>
-    ${config.value.ts1_files.map(f => `<li>${f}</li>`).join('')}
+    ${config.value.ts1_files.map(f => `<li>${typeof f === 'string' ? f.split(/[\\/]/).pop() : f.name}</li>`).join('')}
   </ul>
 
   <h2>Observed Data Reference</h2>
-  <p>${config.value.observed_data_file || 'None Provided'}</p>
+  <p>${config.value.observed_data_file ? (typeof config.value.observed_data_file === 'string' ? config.value.observed_data_file.split(/[\\/]/).pop() : config.value.observed_data_file.name) : 'None Provided'}</p>
 
   <h2>Basin Geometry & Aquifer</h2>
   <table>
@@ -1266,7 +1230,7 @@ const submitJob = async () => {
     }
   } else if (config.value.inflow_source === 'ts1' && config.value.ts1_files) {
     subtasks.value = config.value.ts1_files.map(f => ({
-      name: f.split(/[\\/]/).pop().split('.')[0],
+      name: typeof f === 'string' ? f.split(/[\\/]/).pop().split('.')[0] : f.name.split('.')[0],
       status: 'queued'
     }))
   }

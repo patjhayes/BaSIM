@@ -1271,24 +1271,8 @@ const handleTS1Upload = async (event) => {
   config.value.ts1_files = []
   
   for (const file of files) {
-    if (runLocally.value) {
-      const formData = new FormData()
-      formData.append('file', file)
-      try {
-        const r = await axios.post(`${API_BASE}/api/upload-ts1`, formData)
-        config.value.ts1_files.push(r.data.filepath)
-      } catch (err) {
-        console.error('Failed local TS1 upload', err)
-      }
-    } else {
-      try {
-        const filename = `${Date.now()}_${file.name}`
-        const { data, error } = await supabase.storage.from('ts1_files').upload(filename, file)
-        if (!error) config.value.ts1_files.push(data.path)
-      } catch (err) {
-        console.error('Failed cloud TS1 upload', err)
-      }
-    }
+    const text = await file.text()
+    config.value.ts1_files.push({ name: file.name, content: text })
   }
 }
 
@@ -1502,7 +1486,7 @@ const submitJob = async () => {
     }
   } else if (config.value.inflow_source === 'ts1' && config.value.ts1_files) {
     subtasks.value = config.value.ts1_files.map(f => ({
-      name: f.split(/[\\/]/).pop().split('.')[0],
+      name: typeof f === 'string' ? f.split(/[\\/]/).pop().split('.')[0] : f.name.split('.')[0],
       status: 'queued'
     }))
   }
