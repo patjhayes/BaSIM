@@ -14,15 +14,15 @@ services:
           name: basim-redis
           property: connectionString
       - key: STRIPE_API_KEY
-        value: "paste_key_here"
+        sync: false
       - key: STRIPE_WEBHOOK_SECRET
-        value: "paste_key_here"
+        sync: false
       - key: SUPABASE_URL
-        value: "paste_key_here"
+        sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
-        value: "paste_key_here"
+        sync: false
       - key: SUPABASE_JWT_SECRET
-        value: "paste_key_here"
+        sync: false
 
   # Frontend Static Site (Vue/Vite)
   - type: web
@@ -40,9 +40,9 @@ services:
           name: basim-backend
           envVarKey: RENDER_EXTERNAL_URL
       - key: VITE_SUPABASE_URL
-        value: "paste_key_here"
+        sync: false
       - key: VITE_SUPABASE_ANON_KEY
-        value: "paste_key_here"
+        sync: false
         # Optional: Prefix with https:// if you construct the full URL in your frontend
 
   # Background Worker (Celery)
@@ -61,15 +61,15 @@ services:
           name: basim-redis
           property: connectionString
       - key: STRIPE_API_KEY
-        value: "paste_key_here"
+        sync: false
       - key: STRIPE_WEBHOOK_SECRET
-        value: "paste_key_here"
+        sync: false
       - key: SUPABASE_URL
-        value: "paste_key_here"
+        sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
-        value: "paste_key_here"
+        sync: false
       - key: SUPABASE_JWT_SECRET
-        value: "paste_key_here"
+        sync: false
 
   # Redis Broker
   - type: redis
