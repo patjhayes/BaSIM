@@ -51,13 +51,7 @@ services:
     env: python
     buildCommand: "python scripts/download_modflow.py && pip install -r requirements.txt"
     startCommand: "celery -A src.api.worker.celery_app worker --loglevel=info"
-    autoscaling:
-      enabled: true
-      minInstances: 1
-      maxInstances: 10
-      criteria:
-        cpu:
-          percentage: 70
+
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.0
