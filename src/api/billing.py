@@ -119,7 +119,7 @@ def _add_credits(project_code: str, amount: int, type_str: str, user_id: str = N
     # Using read-update-write here for simplicity, but RPC is safer for concurrency.
     proj_resp = supabase_admin.table('projects').select('*').eq('project_code', project_code).execute()
     if not proj_resp.data:
-        return
+        raise HTTPException(status_code=404, detail=f"Project '{project_code}' not found. Cannot add credits until the project is registered.")
         
     current_balance = proj_resp.data[0]['credit_balance']
     new_balance = current_balance + amount

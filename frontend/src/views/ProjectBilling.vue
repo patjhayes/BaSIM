@@ -128,7 +128,9 @@ const fetchData = async () => {
   
   // Fetch Balance from backend
   try {
-    const res = await axios.get(`${API_BASE}/api/billing/balance/${projectCodeFilter.value}`)
+    const { data: { session } } = await supabase.auth.getSession()
+    const headers = session ? { Authorization: `Bearer ${session.access_token}` } : {}
+    const res = await axios.get(`${API_BASE}/api/billing/balance/${projectCodeFilter.value}`, { headers })
     currentBalance.value = res.data.credit_balance
   } catch (e: any) {
     if (e.response && e.response.status === 404) {
@@ -156,7 +158,9 @@ const purchaseCredits = async () => {
   if (!projectCodeFilter.value) return
   purchasing.value = true
   try {
-    const res = await axios.post(`${API_BASE}/api/billing/checkout/${projectCodeFilter.value}`)
+    const { data: { session } } = await supabase.auth.getSession()
+    const headers = session ? { Authorization: `Bearer ${session.access_token}` } : {}
+    const res = await axios.post(`${API_BASE}/api/billing/checkout/${projectCodeFilter.value}`, {}, { headers })
     if (res.data.payment_url) {
       window.location.href = res.data.payment_url
     }
@@ -169,11 +173,13 @@ const purchaseCredits = async () => {
 const submitAdminAdjustment = async () => {
   if (!adminProject.value || !adminAmount.value) return
   try {
+    const { data: { session } } = await supabase.auth.getSession()
+    const headers = session ? { Authorization: `Bearer ${session.access_token}` } : {}
     await axios.post(`${API_BASE}/api/billing/admin/adjust_credits`, {
       project_code: adminProject.value,
       amount: adminAmount.value,
       description: adminDesc.value || 'Admin Adjustment'
-    })
+    }, { headers })
     alert('Adjustment successful')
     if (adminProject.value === projectCodeFilter.value) fetchData()
   } catch (e: any) {
