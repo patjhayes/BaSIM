@@ -504,7 +504,9 @@ def run_simulation(ts1_path: str, config: dict):
                 if max_head_array is not None:
                     try:
                         fig, ax = plt.subplots(figsize=(6, 5))
-                        pmv = flopy.plot.PlotMapView(model=sim, ax=ax, layer=0)
+                        ugrid_props = g.get_gridprops_unstructuredgrid()
+                        ugrid = flopy.discretization.UnstructuredGrid(**ugrid_props)
+                        pmv = flopy.plot.PlotMapView(modelgrid=ugrid, ax=ax, layer=0)
                         
                         # Filter dry cells (-999 or extremely low values)
                         masked_head = np.ma.masked_where(max_head_array < floor_elev - 100, max_head_array)
@@ -528,7 +530,9 @@ def run_simulation(ts1_path: str, config: dict):
                         buf.seek(0)
                         heatmap_b64 = f"data:image/png;base64,{base64.b64encode(buf.read()).decode('utf-8')}"
                     except Exception as e:
+                        import traceback
                         print(f"Failed to generate heatmap: {e}")
+                        traceback.print_exc()
                         
                 # Export lak_allobs.csv for the GUI's "Inflow - Storage - Outflow" graph
                 # The GUI expects: time, LAK_STAGE, LAK_EXT_INFLOW, LAK_GW, LAK_VOLUME
