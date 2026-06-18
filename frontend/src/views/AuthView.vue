@@ -43,7 +43,7 @@
             </p>
             <p class="text-xs text-gray-500 mt-4 text-center">
               By signing up, you agree to our 
-              <router-link to="/eula" target="_blank" class="text-blue-600 hover:underline">End User License Agreement (EULA)</router-link>.
+              <router-link to="/tos" target="_blank" class="text-blue-600 hover:underline">Software-as-a-Service Terms of Service</router-link>.
             </p>
           </div>
 

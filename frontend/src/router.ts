@@ -10,7 +10,7 @@ const routes = [
   { path: '/calibrate', component: () => import('./views/CalibrationView.vue'), meta: { requiresAuth: true } },
   { path: '/auth', component: () => import('./views/AuthView.vue') },
   { path: '/reset-password', component: () => import('./views/ResetPasswordView.vue') },
-  { path: '/eula', component: () => import('./views/EulaView.vue') },
+  { path: '/tos', component: () => import('./views/TermsOfServiceView.vue') },
 ]
 
 const router = createRouter({
