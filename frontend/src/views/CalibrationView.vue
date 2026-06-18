@@ -392,7 +392,7 @@
           <div v-if="!isRunning && lastResults" class="space-y-6 mt-4">
             
             <!-- TS1 Calibration Results -->
-            <div v-if="lastResults.type === 'ts1_batch' && lastResults.calibration">
+            <div v-if="(lastResults.type === 'ts1_batch' || lastResults.type === 'ts1_ensemble') && lastResults.calibration">
               <div class="mb-4">
                 <div class="bg-teal-50 border border-teal-200 rounded p-4 relative text-center">
                   <div class="text-xs text-teal-600 font-bold uppercase mb-1">Nash-Sutcliffe Efficiency (NSE)</div>
@@ -415,7 +415,7 @@
               </div>
             </div>
             
-            <div v-else-if="lastResults.type === 'ts1_batch'" class="text-orange-600">
+            <div v-else-if="lastResults.type === 'ts1_batch' || lastResults.type === 'ts1_ensemble'" class="text-orange-600">
               Calibration processing failed: {{ lastResults.calibration_error || 'Unknown error' }}
             </div>
           </div>
@@ -1058,8 +1058,8 @@ let subscription = null
 
 const activeDuration = ref('')
 
-const isILSAXEnsemble = computed(() => lastResults.value && lastResults.value.type === 'ilsax_ensemble')
-const activeDurationData = computed(() => isILSAXEnsemble.value ? lastResults.value.durations[activeDuration.value] : null)
+const isEnsemble = computed(() => lastResults.value && (lastResults.value.type === 'ilsax_ensemble' || lastResults.value.type === 'ts1_ensemble'))
+const activeDurationData = computed(() => isEnsemble.value ? lastResults.value.durations[activeDuration.value] : null)
 
 const isValid = computed(() => {
   if (!runLocally.value) {
@@ -1250,7 +1250,7 @@ const submitJob = async () => {
           isRunning.value = false
           jobStatus.value = 'completed'
           lastResults.value = data.results
-          if (data.results.type === 'ilsax_ensemble') {
+          if (data.results.type === 'ilsax_ensemble' || data.results.type === 'ts1_ensemble') {
             activeDuration.value = String(data.results.critical_duration)
           }
           ws.close()
@@ -1353,7 +1353,7 @@ const ensembleStageChartData = computed(() => {
   d.all_runs.forEach((r, idx) => {
     if (r !== d.median_run && r !== d.max_run) {
       datasets.push({
-        label: `TP${r.run_info.pattern_rank}`,
+        label: r.run_info.pattern_rank ? `TP${r.run_info.pattern_rank}` : `Run ${idx}`,
         data: r.timeseries.time_days.map((t, i) => ({ x: t, y: r.timeseries.stage_m[i] })),
         borderColor: 'rgba(156, 163, 175, 0.5)',
         borderWidth: 1,

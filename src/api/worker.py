@@ -163,9 +163,54 @@ def finalize_ts1_batch(self, completed_runs: List[Dict], sim_id: str, config: Di
     if config is None:
         config = {}
         
+    import re
+
+    # Group by duration
+    grouped = {}
+    for r in completed_runs:
+        filename = r.get("filename", "")
+        # Look for e.g. "1 hour", "30 min", "120m"
+        match = re.search(r'(\d+)\s*(hour|hr|h|min|minute|m)s?\b', filename, re.IGNORECASE)
+        if match:
+            val = int(match.group(1))
+            unit = match.group(2).lower()
+            if unit.startswith('h'):
+                dur = str(val * 60)
+            else:
+                dur = str(val)
+        else:
+            dur = "Unknown"
+            
+        if dur not in grouped:
+            grouped[dur] = []
+        grouped[dur].append(r)
+
+    duration_summaries = {}
+    for dur, runs in grouped.items():
+        runs_sorted = sorted(runs, key=lambda x: x.get("peak_stage", 0.0), reverse=True)
+        
+        if len(runs_sorted) >= 10:
+            median_run = runs_sorted[4]
+        else:
+            median_run = runs_sorted[len(runs_sorted) // 2]
+            
+        max_run = runs_sorted[0]
+        
+        duration_summaries[dur] = {
+            "median_peak_stage": median_run.get("peak_stage", 0.0),
+            "max_peak_stage": max_run.get("peak_stage", 0.0),
+            "median_run": median_run,
+            "max_run": max_run,
+            "all_runs": runs_sorted
+        }
+        
+    critical_dur = max(duration_summaries.keys(), key=lambda d: duration_summaries[d]["median_peak_stage"]) if duration_summaries else "Unknown"
+
     results = {
-        "type": "ts1_batch",
-        "runs": completed_runs
+        "type": "ts1_ensemble",
+        "durations": duration_summaries,
+        "critical_duration": critical_dur,
+        "runs": completed_runs # keep this for backward compatibility if needed, though not strictly required
     }
 
     observed_input = config.get("observed_data_file")

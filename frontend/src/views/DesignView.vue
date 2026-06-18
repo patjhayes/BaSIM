@@ -597,8 +597,8 @@
               </div>
             </div>
 
-            <!-- ILSAX Ensemble Results -->
-            <div v-if="isILSAXEnsemble">
+            <!-- Ensemble Results (ILSAX or TS1) -->
+            <div v-if="isEnsemble">
               <!-- Critical Duration Overall Graph -->
               <div class="mb-8 border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
                 <h3 class="text-sm font-bold text-gray-700 mb-2">Critical Duration Profile</h3>
@@ -611,11 +611,11 @@
               <!-- Metrics for active duration -->
               <div class="grid grid-cols-2 gap-4">
                 <div class="bg-blue-50 border border-blue-200 rounded p-4 relative">
-                  <div class="text-xs text-blue-600 font-bold uppercase mb-1">Median Peak Stage (TP5)</div>
+                  <div class="text-xs text-blue-600 font-bold uppercase mb-1">Median Peak Stage {{ lastResults?.type === 'ilsax_ensemble' ? '(TP5)' : '' }}</div>
                   <div class="text-2xl font-bold text-blue-900">{{ activeDurationData.median_peak_stage?.toFixed(3) || '0.000' }} m AHD</div>
                 </div>
                 <div class="bg-red-50 border border-red-200 rounded p-4 relative">
-                  <div class="text-xs text-red-600 font-bold uppercase mb-1">Max Peak Stage (TP1)</div>
+                  <div class="text-xs text-red-600 font-bold uppercase mb-1">Max Peak Stage {{ lastResults?.type === 'ilsax_ensemble' ? '(TP1)' : '' }}</div>
                   <div class="text-2xl font-bold text-red-900">{{ activeDurationData.max_peak_stage?.toFixed(3) || '0.000' }} m AHD</div>
                 </div>
               </div>
@@ -1281,8 +1281,8 @@ let subscription = null
 
 const activeDuration = ref('')
 
-const isILSAXEnsemble = computed(() => lastResults.value && lastResults.value.type === 'ilsax_ensemble')
-const activeDurationData = computed(() => isILSAXEnsemble.value ? lastResults.value.durations[activeDuration.value] : null)
+const isEnsemble = computed(() => lastResults.value && (lastResults.value.type === 'ilsax_ensemble' || lastResults.value.type === 'ts1_ensemble'))
+const activeDurationData = computed(() => isEnsemble.value ? lastResults.value.durations[activeDuration.value] : null)
 
 const isValid = computed(() => {
   if (!runLocally.value) {
@@ -1323,24 +1323,26 @@ const downloadReport = () => {
     }
   }
 
-  // Download BOM CSV
-  const bomCsv = generateBomCsv();
-  if (bomCsv) {
-    const blob = new Blob([bomCsv], { type: 'text/csv' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = 'BOM_IFD_Data.csv'
-    link.click()
-  }
+  // Download BOM CSV (only for ILSAX)
+  if (config.value.inflow_source === 'ilsax') {
+    const bomCsv = generateBomCsv();
+    if (bomCsv) {
+      const blob = new Blob([bomCsv], { type: 'text/csv' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = 'BOM_IFD_Data.csv'
+      link.click()
+    }
 
-  // Download ARR TXT
-  const arrTxt = generateArrTxt();
-  if (arrTxt) {
-    const blob = new Blob([arrTxt], { type: 'text/plain' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = 'ARR_Datahub.txt'
-    link.click()
+    // Download ARR TXT
+    const arrTxt = generateArrTxt();
+    if (arrTxt) {
+      const blob = new Blob([arrTxt], { type: 'text/plain' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = 'ARR_Climate_Data.txt'
+      link.click()
+    }
   }
 
   const html = `
@@ -1349,33 +1351,14 @@ const downloadReport = () => {
 <head>
 <title>BaSIM Engineering Report</title>
 <style>
-  body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; color: #333; }
-  h1 { color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 10px; }
-  h2 { color: #2563eb; margin-top: 30px; }
-  h3 { color: #4b5563; }
-  table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-  th, td { border: 1px solid #e5e7eb; padding: 10px; text-align: left; }
-  th { background: #f9fafb; width: 40%; font-weight: 600; }
-  img { max-width: 100%; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-  .btn { display: inline-block; background: #16a34a; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-bottom: 20px; }
-  .btn:hover { background: #15803d; }
-  @media print {
-    .no-print { display: none; }
-    body { max-width: 100%; padding: 0; }
-    h1, h2 { page-break-after: avoid; }
-    img, table { page-break-inside: avoid; }
-  }
-  <meta charset="utf-8" />
-  <title>BaSIM Engineering Report</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; max-width: 1000px; margin: 0 auto; color: #333; }
-    h1 { color: #1e3a8a; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
-    h2 { color: #2563eb; margin-top: 2rem; }
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { border: 1px solid #e5e7eb; padding: 0.75rem; text-align: left; }
-    th { background-color: #f9fafb; width: 40%; }
-    img { max-width: 100%; height: auto; margin-top: 1rem; border: 1px solid #e5e7eb; border-radius: 4px; padding: 4px; }
-  </style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; max-width: 1000px; margin: 0 auto; color: #333; }
+  h1 { color: #1e3a8a; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
+  h2 { color: #2563eb; margin-top: 2rem; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  th, td { border: 1px solid #e5e7eb; padding: 0.75rem; text-align: left; }
+  th { background-color: #f9fafb; width: 40%; }
+  img { max-width: 100%; height: auto; margin-top: 1rem; border: 1px solid #e5e7eb; border-radius: 4px; padding: 4px; }
+</style>
 </head>
 <body>
   <h1>BaSIM Engineering Report</h1>
@@ -1398,8 +1381,13 @@ const downloadReport = () => {
     </ul>
   ` : `
     <table>
-      <tr><th>Coordinates (Lat, Lng)</th><td>${climateData.value ? climateData.value.req?.lat + ', ' + climateData.value.req?.lon : 'N/A'}</td></tr>
-      <tr><th>Climate Scenario</th><td>${climateScenario.value}</td></tr>
+      ${config.value.inflow_source === 'ilsax' ? `
+  <h2>Climate & Rainfall Configuration</h2>
+  <table>
+    <tr><th>Location</th><td>Lat: ${config.value.rainfall.latitude}, Lon: ${config.value.rainfall.longitude}</td></tr>
+    <tr><th>Target AEP</th><td>${selectedAEP.value}</td></tr>
+    <tr><th>Climate Scenario</th><td>${climateScenario.value}</td></tr>
+  </table>` : ''}
       <tr><th>Temporal Pattern Region</th><td>${climateData.value ? climateData.value.temporal_patterns?.[0]?.region : 'N/A'}</td></tr>
       <tr><th>Name</th><td>${config.value.catchment.name}</td></tr>
       <tr><th>Area (ha)</th><td>${config.value.catchment.area_ha}</td></tr>
@@ -1425,8 +1413,8 @@ const downloadReport = () => {
 
   <h2>Simulation Results (Critical Duration: ${activeDuration.value} min)</h2>
   <table>
-    <tr><th>Median Peak Stage (TP5)</th><td>${activeDurationData.value.median_peak_stage?.toFixed(3) || 'N/A'} m AHD</td></tr>
-    <tr><th>Max Peak Stage (TP1)</th><td>${activeDurationData.value.max_peak_stage?.toFixed(3) || 'N/A'} m AHD</td></tr>
+    <tr><th>Median Peak Stage ${config.value.inflow_source === 'ilsax' ? '(TP5)' : ''}</th><td>${activeDurationData.value.median_peak_stage?.toFixed(3) || 'N/A'} m AHD</td></tr>
+    <tr><th>Max Peak Stage ${config.value.inflow_source === 'ilsax' ? '(TP1)' : ''}</th><td>${activeDurationData.value.max_peak_stage?.toFixed(3) || 'N/A'} m AHD</td></tr>
   </table>
   
   ${imgOverall ? `<h3>Critical Duration Profile</h3><img src="${imgOverall}" />` : ''}
@@ -1506,7 +1494,7 @@ const submitJob = async () => {
           isRunning.value = false
           jobStatus.value = 'completed'
           lastResults.value = data.results
-          if (data.results.type === 'ilsax_ensemble') {
+          if (data.results.type === 'ilsax_ensemble' || data.results.type === 'ts1_ensemble') {
             activeDuration.value = String(data.results.critical_duration)
           }
           ws.close()
@@ -1580,7 +1568,7 @@ const ensembleStageChartData = computed(() => {
   d.all_runs.forEach((r, idx) => {
     if (r !== d.median_run && r !== d.max_run) {
       datasets.push({
-        label: `TP${r.run_info.pattern_rank}`,
+        label: r.filename || `TP${r.run_info?.pattern_rank}`,
         data: r.timeseries.time_days.map((t, i) => ({ x: t, y: r.timeseries.stage_m[i] })),
         borderColor: 'rgba(156, 163, 175, 0.5)',
         borderWidth: 1,
@@ -1592,7 +1580,7 @@ const ensembleStageChartData = computed(() => {
   
   // Median
   datasets.push({
-    label: `Median (TP${d.median_run.run_info.pattern_rank})`,
+    label: `Median${d.median_run.filename ? ` (${d.median_run.filename})` : ` (TP${d.median_run.run_info?.pattern_rank})`}`,
     data: d.median_run.timeseries.time_days.map((t, i) => ({ x: t, y: d.median_run.timeseries.stage_m[i] })),
     borderColor: 'rgb(37, 99, 235)', // bold blue
     borderWidth: 3,
@@ -1602,7 +1590,7 @@ const ensembleStageChartData = computed(() => {
   
   // Max
   datasets.push({
-    label: `Max (TP${d.max_run.run_info.pattern_rank})`,
+    label: `Max${d.max_run.filename ? ` (${d.max_run.filename})` : ` (TP${d.max_run.run_info?.pattern_rank})`}`,
     data: d.max_run.timeseries.time_days.map((t, i) => ({ x: t, y: d.max_run.timeseries.stage_m[i] })),
     borderColor: 'rgb(220, 38, 38)', // bold red
     borderWidth: 3,
