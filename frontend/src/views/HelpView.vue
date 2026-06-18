@@ -92,7 +92,30 @@
 
         <section>
           <h2 class="text-xl font-semibold text-blue-800 mb-3 border-b pb-2">
-            5. Aquifer Parameters Glossary
+            5. Outlet Hydraulics (Post-Processing)
+          </h2>
+          <div class="prose prose-sm text-gray-700 max-w-none">
+            <p>You may notice that MODFLOW-USG does not natively handle complex piped outlets, weirs, or grated structures. Instead of wrestling with rigid boundary condition packages during the simulation, BaSIM handles outlet hydraulics via a highly accurate post-processing mass balance.</p>
+            
+            <h3 class="text-md font-semibold mt-4 mb-2 text-gray-800">How It Works</h3>
+            <ol class="list-decimal pl-5 space-y-2 mt-2">
+              <li><strong>Baseline Simulation</strong>: MODFLOW-USG runs the full groundwater simulation to establish the dynamic infiltration rates based on the groundwater mounding and aquifer properties.</li>
+              <li><strong>Hydraulic Routing</strong>: After the simulation completes, the engine steps through the timeseries and recalculates the basin's water mass balance at every timestep: <code>Volume = Volume + (Inflow - Infiltration - Outflow) * dt</code>.</li>
+              <li><strong>Picard Iteration</strong>: Because Outflow depends on the Stage, and Stage depends on the Volume, BaSIM uses a Picard iteration scheme with relaxation at every timestep to solve for the exact equilibrium Stage and Outflow simultaneously.</li>
+            </ol>
+
+            <h3 class="text-md font-semibold mt-4 mb-2 text-gray-800">Supported Structures</h3>
+            <ul class="list-disc pl-5 space-y-1 mt-2 mb-4">
+              <li><strong>Piped Outlets</strong>: Automatically transitions between Inlet Control (weir/orifice flow) and Outlet Control (Manning's full-pipe flow) depending on the stage.</li>
+              <li><strong>Broad Crested Weirs</strong>: Standard weir equation (Q = Cd * L * h^1.5 * sqrt(2g)).</li>
+              <li><strong>Grated Inlets</strong>: Solves for the minimum of perimeter weir flow and grate-area orifice flow (as recommended by QUDM).</li>
+            </ul>
+          </div>
+        </section>
+
+        <section>
+          <h2 class="text-xl font-semibold text-blue-800 mb-3 border-b pb-2">
+            6. Aquifer Parameters Glossary
           </h2>
           <div class="prose prose-sm text-gray-700 max-w-none">
             <p>Understanding the fundamental groundwater parameters used in BaSIM.</p>
