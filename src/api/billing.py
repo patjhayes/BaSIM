@@ -22,7 +22,13 @@ def get_balance(project_code: str, user: dict = Depends(get_current_user)):
     # 1. Verify project belongs to user's company
     proj_resp = supabase_admin.table('projects').select('*').eq('project_code', project_code).execute()
     if not proj_resp.data:
-        raise HTTPException(status_code=404, detail="Project not found")
+        # Auto-register new project codes on search
+        supabase_admin.table('projects').insert({
+            'project_code': project_code,
+            'company_id': user['company_id'],
+            'credit_balance': 0
+        }).execute()
+        return {"project_code": project_code, "credit_balance": 0}
     
     project = proj_resp.data[0]
     if project['company_id'] != user['company_id'] and not user.get('is_admin'):
