@@ -50,3 +50,6 @@ celery
 redis
 shapely
 pyshp
+squareup
+supabase
+PyJWT
