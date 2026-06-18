@@ -424,7 +424,7 @@ async def ws_progress(ws: WebSocket, client_id: str):
     await manager.connect(ws, client_id)
     
     celery_url = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
-    r = redis_async.from_url(celery_url)
+    r = redis_async.from_url(celery_url, max_connections=2)
     pubsub = r.pubsub()
     await pubsub.subscribe(f"sim:{client_id}")
     

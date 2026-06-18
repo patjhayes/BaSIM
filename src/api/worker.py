@@ -22,8 +22,15 @@ celery_app = Celery(
     backend=CELERY_BROKER_URL
 )
 
+celery_app.conf.update(
+    broker_pool_limit=1,
+    redis_max_connections=2,
+    worker_concurrency=2, # Hardcode fallback
+)
+
 # Connect to Redis for Pub/Sub progress updates
-redis_client = redis.from_url(CELERY_BROKER_URL)
+# Limit connections to prevent crashing Render's free Redis (30 conn max)
+redis_client = redis.from_url(CELERY_BROKER_URL, max_connections=2)
 
 
 def publish_update(sim_id: str, payload: dict):
