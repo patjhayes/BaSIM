@@ -339,7 +339,16 @@
         <div v-if="activeRightTab === 'simulation'">
           <div v-if="isRunning || lastResults" class="bg-white rounded-lg shadow p-6">
           <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-semibold text-gray-900">{{ isRunning ? 'Job Status Tracker' : 'Simulation Complete' }}</h3>
+            <div class="flex items-center space-x-4">
+              <h3 class="text-lg font-semibold text-gray-900">{{ isRunning ? 'Job Status Tracker' : 'Simulation Complete' }}</h3>
+              <button 
+                v-if="isRunning" 
+                @click="cancelSimulation" 
+                class="px-3 py-1 text-xs font-semibold text-red-600 bg-red-100 rounded-md hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                Cancel Simulation
+              </button>
+            </div>
             
             <div class="flex space-x-3 items-center">
             <!-- Duration Tabs for Ensemble -->
@@ -1282,6 +1291,21 @@ const submitJob = async () => {
     // Cloud queuing logic here
     isRunning.value = false
     queueError.value = 'Cloud ensemble not implemented in this demo'
+  }
+}
+
+const cancelSimulation = async () => {
+  if (!currentJobId.value || !isRunning.value) return
+  
+  try {
+    const resp = await axios.post(`${API_BASE}/api/simulations/${currentJobId.value}/cancel`, {}, {
+      headers: { Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}` }
+    })
+    
+    // UI will automatically update when the WS receives the 'error' message with 'cancelled' status
+    progressMessage.value = 'Cancelling...'
+  } catch (err) {
+    alert('Failed to cancel simulation: ' + (err.response?.data?.detail || err.message))
   }
 }
 

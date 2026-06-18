@@ -319,7 +319,10 @@ async def simulate(cfg: Dict, bg: BackgroundTasks, user: dict = Depends(get_curr
         "progress": 0,
         "config": cfg,
         "started_at": datetime.utcnow().isoformat(),
-        "user_email": email
+        "user_email": email,
+        "cost": cost if not is_gov else 0,
+        "project_code": project_code,
+        "user_id": user['id'] if user else None
     }
     
     bg.add_task(dispatch_simulation, sim_id, cfg)
@@ -382,6 +385,38 @@ async def simulation_status(sim_id: str):
     if not sim:
         raise HTTPException(status_code=404, detail="Simulation not found")
     return sim
+
+
+@app.post("/api/simulations/{sim_id}/cancel")
+async def cancel_simulation(sim_id: str, user: dict = Depends(get_current_user)):
+    sim = simulations.get(sim_id)
+    if not sim:
+        raise HTTPException(status_code=404, detail="Simulation not found")
+        
+    if sim["status"] not in ("running", "dispatching"):
+        raise HTTPException(status_code=400, detail="Simulation is not currently running")
+        
+    # Set cancel flag in Redis for workers to see
+    redis_client.setex(f"cancel:{sim_id}", 3600, "1")
+    
+    # Refund credits if necessary
+    cost = sim.get("cost", 0)
+    project_code = sim.get("project_code")
+    user_id = sim.get("user_id")
+    
+    if cost > 0 and project_code:
+        try:
+            _add_credits(project_code, cost, 'refund', user_id, f"Refund: Cancelled Run {sim_id[:8]}")
+        except Exception as e:
+            logger.error(f"Failed to refund credits for sim {sim_id}: {e}")
+            
+    sim["status"] = "cancelled"
+    sim["error"] = "Cancelled by user"
+    
+    # Publish cancellation so the frontend WS reader closes
+    redis_client.publish(f"sim:{sim_id}", json.dumps({"type": "error", "message": "Simulation cancelled by user. Credits refunded."}))
+    
+    return {"status": "cancelled", "refunded_cost": cost}
 
 
 @app.websocket("/ws/{client_id}")

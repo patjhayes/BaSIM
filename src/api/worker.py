@@ -39,6 +39,12 @@ def publish_update(sim_id: str, payload: dict):
 def run_ilsax_task(self, run_info: Dict, config: Dict, sim_id: str):
     """Run a single ILSAX simulation as part of an ensemble."""
     run_name = run_info.get("run_name", "synthetic")
+    
+    # Check for cancellation
+    if redis_client.get(f"cancel:{sim_id}"):
+        publish_update(sim_id, {"type": "subtask_completed", "run_name": run_name, "ok": False, "error": "Cancelled by user"})
+        return {"run_info": run_info, "ok": False, "peak_stage": 0.0, "summary": {}, "timeseries": {}}
+        
     publish_update(sim_id, {"type": "subtask_started", "run_name": run_name})
 
     # Prepare configuration for this specific run
@@ -86,6 +92,11 @@ def run_ts1_task(self, ts1_input: Union[str, Dict], config: Dict, sim_id: str):
     else:
         actual_path = str(ts1_input)
         run_name = Path(actual_path).stem
+
+    # Check for cancellation
+    if redis_client.get(f"cancel:{sim_id}"):
+        publish_update(sim_id, {"type": "subtask_completed", "run_name": run_name, "ok": False, "error": "Cancelled by user"})
+        return {"filename": Path(actual_path).name, "ok": False, "peak_stage": 0.0, "summary": {}, "timeseries": {}}
 
     publish_update(sim_id, {"type": "subtask_started", "run_name": run_name})
 
