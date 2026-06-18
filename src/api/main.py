@@ -289,9 +289,9 @@ async def simulate(cfg: Dict, bg: BackgroundTasks, user: dict = Depends(get_curr
     if not project_code:
         raise HTTPException(status_code=400, detail="project_code is required")
         
-    # 2. Check .gov.au free tier
+    # 2. Check .gov.au and innealta free tier
     email = user.get("email", "")
-    is_gov = email.endswith(".gov.au")
+    is_gov = email.endswith(".gov.au") or email.endswith("@innealta.com.au")
     
     # 3. Check credits and deduct if not .gov.au
     if not is_gov:
