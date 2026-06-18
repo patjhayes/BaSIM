@@ -27,6 +27,9 @@ from src.api.worker import (
     redis_client
 )
 import redis.asyncio as redis_async
+from fastapi import Depends
+from src.api.billing import router as billing_router, _add_credits
+from src.api.auth_utils import get_current_user
 
 # Ensure project root on sys.path for existing modules
 ROOT = Path(__file__).resolve().parents[2]
@@ -52,6 +55,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("basim.api")
 
 app = FastAPI(title="BaSIM API", version="0.1.0")
+app.include_router(billing_router, prefix="/api/billing")
 
 # CORS for local dev (Vue vite server) and Render frontend
 app.add_middleware(
@@ -268,7 +272,46 @@ async def fetch_climate(req: ClimateRequest):
 
 
 @app.post("/api/simulate")
-async def simulate(cfg: Dict, bg: BackgroundTasks):
+async def simulate(cfg: Dict, bg: BackgroundTasks, user: dict = Depends(get_current_user)):
+    # 1. Determine cost
+    inflow_source = cfg.get("inflow_source", "ilsax")
+    if inflow_source == "ts1":
+        ts1_files = cfg.get("ts1_files", [])
+        if cfg.get("ts1_file") and not ts1_files:
+            ts1_files = [cfg["ts1_file"]]
+        cost = len(ts1_files)
+    else:
+        # ILSAX mode
+        ensemble_rainfalls = cfg.get("ensemble_rainfalls", [])
+        cost = len(ensemble_rainfalls) if ensemble_rainfalls else 1
+        
+    project_code = cfg.get("project_code")
+    if not project_code:
+        raise HTTPException(status_code=400, detail="project_code is required")
+        
+    # 2. Check .gov.au free tier
+    email = user.get("email", "")
+    is_gov = email.endswith(".gov.au")
+    
+    # 3. Check credits and deduct if not .gov.au
+    if not is_gov:
+        # We need to query the balance natively via service role
+        from src.api.auth_utils import supabase_admin
+        proj_resp = supabase_admin.table('projects').select('credit_balance, company_id').eq('project_code', project_code).execute()
+        
+        if not proj_resp.data:
+            raise HTTPException(status_code=400, detail="Project not found. Please create it or check billing.")
+            
+        project = proj_resp.data[0]
+        if project['company_id'] != user['company_id']:
+            raise HTTPException(status_code=403, detail="Not authorized to run on this project")
+            
+        if project['credit_balance'] < cost:
+            raise HTTPException(status_code=402, detail=f"Insufficient credits. Cost: {cost}, Balance: {project['credit_balance']}")
+            
+        # Deduct credits
+        _add_credits(project_code, -cost, 'simulation', user['id'], f"Simulation Run ({cost} runs)")
+
     sim_id = str(uuid.uuid4())
     simulations[sim_id] = {
         "id": sim_id,
@@ -276,10 +319,11 @@ async def simulate(cfg: Dict, bg: BackgroundTasks):
         "progress": 0,
         "config": cfg,
         "started_at": datetime.utcnow().isoformat(),
+        "user_email": email
     }
     
     bg.add_task(dispatch_simulation, sim_id, cfg)
-    return {"simulation_id": sim_id, "status": "started", "message": "Simulation started"}
+    return {"simulation_id": sim_id, "status": "started", "message": "Simulation started", "cost": 0 if is_gov else cost}
 
 
 async def dispatch_simulation(sim_id: str, config: Dict):

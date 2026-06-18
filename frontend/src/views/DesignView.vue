@@ -1500,7 +1500,8 @@ const submitJob = async () => {
           ws.close()
         } else if (data.type === 'error') {
           isRunning.value = false
-          queueError.value = 'Job failed: ' + data.message
+          jobStatus.value = 'error'
+          queueError.value = data.message
           ws.close()
         }
       }
@@ -1518,9 +1519,13 @@ const submitJob = async () => {
         }
         isRunning.value = false
       }
-    } catch (err) {
+    } catch (err: any) {
       isRunning.value = false
-      queueError.value = 'Failed to submit local job: ' + err.message
+      if (err.response) {
+        queueError.value = err.response.data?.detail || err.message
+      } else {
+        queueError.value = 'Failed to submit job: ' + err.message
+      }
     }
   } else {
     // Cloud queuing logic here
