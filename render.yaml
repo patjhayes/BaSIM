@@ -18,11 +18,11 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         value: "paste_key_here"
       - key: SUPABASE_URL
-        sync: false
+        value: "paste_key_here"
       - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
+        value: "paste_key_here"
       - key: SUPABASE_JWT_SECRET
-        sync: false
+        value: "paste_key_here"
 
   # Frontend Static Site (Vue/Vite)
   - type: web
@@ -40,9 +40,9 @@ services:
           name: basim-backend
           envVarKey: RENDER_EXTERNAL_URL
       - key: VITE_SUPABASE_URL
-        sync: false
+        value: "paste_key_here"
       - key: VITE_SUPABASE_ANON_KEY
-        sync: false
+        value: "paste_key_here"
         # Optional: Prefix with https:// if you construct the full URL in your frontend
 
   # Background Worker (Celery)
@@ -65,11 +65,11 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         value: "paste_key_here"
       - key: SUPABASE_URL
-        sync: false
+        value: "paste_key_here"
       - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
+        value: "paste_key_here"
       - key: SUPABASE_JWT_SECRET
-        sync: false
+        value: "paste_key_here"
 
   # Redis Broker
   - type: redis
