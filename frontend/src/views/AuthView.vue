@@ -41,6 +41,10 @@
             <p class="text-xs text-gray-500 mt-2">
               Corporate emails will automatically group you into your company's workspace. Generic emails (gmail, etc.) will create a Solo Workspace.
             </p>
+            <p class="text-xs text-gray-500 mt-4 text-center">
+              By signing up, you agree to our 
+              <router-link to="/eula" target="_blank" class="text-blue-600 hover:underline">End User License Agreement (EULA)</router-link>.
+            </p>
           </div>
 
           <div v-if="isForgotPassword" class="text-center">

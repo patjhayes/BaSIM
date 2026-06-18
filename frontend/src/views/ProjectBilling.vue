@@ -183,7 +183,7 @@ const submitAdminAdjustment = async () => {
 
 onMounted(async () => {
   const { data: { session } } = await supabase.auth.getSession()
-  if (session?.user?.email === 'Patrick@innealta.com.au') {
+  if (session?.user?.email?.toLowerCase() === 'patrick@innealta.com.au') {
     isAdmin.value = true
   }
 })
