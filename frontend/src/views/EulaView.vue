@@ -60,7 +60,7 @@
           The Licensor provides the Software “as is” without warranty of any kind, either expressed or implied, including, without limitation, the implied warranties of merchantability, fitness for a particular purpose, error-free operation, or accuracy of simulation results. 
         </p>
         <p>
-          <strong>Engineering and Financial Disclaimer:</strong> The Software provides simulated mathematical estimations based on the input data provided by the Licensee. The Licensor does not guarantee that the simulation results will perfectly reflect real-world battery performance, financial returns, or grid interactions. The Licensee assumes all risk for any engineering, design, commercial, or financial decisions made based on the output of the Software.
+          <strong>Engineering and Financial Disclaimer:</strong> The Software provides simulated mathematical estimations based on the input data provided by the Licensee. The Licensor does not guarantee that the simulation results will perfectly reflect real-world physical processes. The Licensee assumes all risk for any engineering, design, commercial, or financial decisions made based on the output of the Software.
         </p>
 
         <h3>7. Limited Liability</h3>
