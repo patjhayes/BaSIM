@@ -645,6 +645,14 @@
                   <div class="h-64">
                     <Line ref="chartFlow" :data="ensembleFlowChartData" :options="chartOptions" />
                   </div>
+                  
+                  <!-- FloPy Peak Heatmap -->
+                  <div v-if="activeDurationData.median_run?.timeseries?.heatmap_base64" class="pt-6 border-t border-gray-100">
+                    <h4 class="text-sm font-semibold text-gray-800 mb-3 text-center">Peak Groundwater Contours (Modflow-USG)</h4>
+                    <div class="flex justify-center bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-inner">
+                      <img :src="activeDurationData.median_run.timeseries.heatmap_base64" alt="Groundwater Heatmap" class="rounded shadow-sm" style="max-height: 400px; object-fit: contain;">
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

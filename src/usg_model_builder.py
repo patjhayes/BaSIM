@@ -17,6 +17,12 @@ import flopy
 from flopy.utils.gridgen import Gridgen
 from shapely.geometry import Polygon, LineString
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import io
+import base64
+
 try:
     from src.utils.mf6_locator import find_mfusg_exe, find_gridgen_exe
 except ImportError:
@@ -426,11 +432,20 @@ def run_simulation(ts1_path: str, config: dict):
         peak_stage = -float('inf')
         peak_time = 0.0
         
+        max_head_array = None
+        
         if success and hds_file.exists():
             hds = bf.HeadUFile(str(hds_file))
             kstpkper = hds.get_kstpkper()
             for i, (kstp, kper) in enumerate(kstpkper):
                 head_array = hds.get_data(kstpkper=(kstp, kper))
+                
+                # Update max head array
+                if max_head_array is None:
+                    max_head_array = np.copy(head_array[0])
+                else:
+                    max_head_array = np.maximum(max_head_array, head_array[0])
+                    
                 basin_heads = head_array[0][basin_nodes_L0]
                 stage = float(np.max(basin_heads))
                 stages.append(stage)
@@ -484,6 +499,37 @@ def run_simulation(ts1_path: str, config: dict):
                 # We can just pass this exact array to the mass balance router
                 infiltration_rating = qinf_ts
                 
+                # Generate FloPy Heatmap
+                heatmap_b64 = None
+                if max_head_array is not None:
+                    try:
+                        fig, ax = plt.subplots(figsize=(6, 5))
+                        pmv = flopy.plot.PlotMapView(model=sim, ax=ax, layer=0)
+                        
+                        # Filter dry cells (-999 or extremely low values)
+                        masked_head = np.ma.masked_where(max_head_array < floor_elev - 100, max_head_array)
+                        
+                        cb = pmv.plot_array(masked_head, cmap='viridis', alpha=0.9)
+                        pmv.plot_grid(colors='white', lw=0.2, alpha=0.3)
+                        pmv.contour_array(masked_head, colors='black', linewidths=0.5, levels=10)
+                        
+                        plt.colorbar(cb, shrink=0.7, label='Peak GW Head (m AHD)')
+                        ax.set_title("Peak Groundwater Contours")
+                        
+                        # Add basin boundary for context
+                        if isinstance(basin_poly, Polygon):
+                            x, y = basin_poly.exterior.xy
+                            ax.plot(x, y, color='red', linewidth=2, label='Basin Boundary')
+                            ax.legend(loc='upper right', framealpha=0.9)
+                        
+                        buf = io.BytesIO()
+                        plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
+                        plt.close(fig)
+                        buf.seek(0)
+                        heatmap_b64 = f"data:image/png;base64,{base64.b64encode(buf.read()).decode('utf-8')}"
+                    except Exception as e:
+                        print(f"Failed to generate heatmap: {e}")
+                        
                 # Export lak_allobs.csv for the GUI's "Inflow - Storage - Outflow" graph
                 # The GUI expects: time, LAK_STAGE, LAK_EXT_INFLOW, LAK_GW, LAK_VOLUME
                 # LAK_GW represents net flow from lake to GW. So outflow to GW is negative.
@@ -501,6 +547,8 @@ def run_simulation(ts1_path: str, config: dict):
                     "inflow_m3s": (flows_m3day[:len(times)] / 86400.0).tolist(),
                     "infiltration_m3s": qinf_ts.tolist(), 
                 }
+                if heatmap_b64:
+                    timeseries_payload["heatmap_base64"] = heatmap_b64
                 
             except Exception as e:
                 infiltration_rating = None

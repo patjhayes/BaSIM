@@ -422,6 +422,14 @@
                   <Line ref="chartCalibration" :data="calibrationChartData" :options="chartOptions" />
                 </div>
               </div>
+              
+              <!-- FloPy Peak Heatmap -->
+              <div v-if="lastResults.runs?.[0]?.timeseries?.heatmap_base64" class="mt-8 border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
+                <h4 class="text-sm font-semibold text-gray-800 mb-3 text-center">Peak Groundwater Contours (Modflow-USG)</h4>
+                <div class="flex justify-center bg-gray-50 p-4 rounded-lg shadow-inner">
+                  <img :src="lastResults.runs[0].timeseries.heatmap_base64" alt="Groundwater Heatmap" class="rounded shadow-sm" style="max-height: 400px; object-fit: contain;">
+                </div>
+              </div>
             </div>
             
             <div v-else-if="lastResults.type === 'ts1_batch' || lastResults.type === 'ts1_ensemble'" class="text-orange-600">
