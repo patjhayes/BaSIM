@@ -369,7 +369,7 @@
                 </select>
               </div>
               <div class="mt-4 pt-3 border-t border-gray-200">
-                <label class="text-xs font-semibold text-gray-700 block mb-2">Infiltration Sizing Approach</label>
+                <label class="text-xs font-semibold text-gray-700 block mb-2">Initial Infiltration Approach</label>
                 <div class="flex justify-between text-xs text-gray-500 px-1 mb-1">
                   <span title="Minimizes the effect of initial soil suction. Best for continuous storm events or pre-saturated soil conditions. Results in a larger basin volume.">Conservative (Saturated)</span>
                   <span title="Accounts heavily for initial dry-soil capillary suction. Best for isolated, brief storm events in well-drained soils. Results in a smaller basin volume.">Optimistic (Dry Soil)</span>
@@ -501,19 +501,25 @@
       <!-- Right Panel - Visualization & Progress -->
       <div class="lg:col-span-2 space-y-6">
         <!-- Tab Navigation for Right Panel -->
-        <div class="flex space-x-1 border-b border-gray-200">
-          <button 
-            @click="activeRightTab = 'simulation'"
-            :class="['px-4 py-2 text-sm font-medium border-b-2 transition-colors', activeRightTab === 'simulation' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300']"
-          >
-            Simulation Tracking
-          </button>
-          <button 
-            v-if="config.inflow_source === 'ilsax' && climateData"
-            @click="activeRightTab = 'climate_data'"
-            :class="['px-4 py-2 text-sm font-medium border-b-2 transition-colors', activeRightTab === 'climate_data' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300']"
-          >
-            Climate Data Inspector
+        <div class="flex justify-between items-center border-b border-gray-200">
+          <div class="flex space-x-1">
+            <button 
+              @click="activeRightTab = 'simulation'"
+              :class="['px-4 py-2 text-sm font-medium border-b-2 transition-colors', activeRightTab === 'simulation' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300']"
+            >
+              Simulation Tracking
+            </button>
+            <button 
+              v-if="config.inflow_source === 'ilsax' && climateData"
+              @click="activeRightTab = 'climate_data'"
+              :class="['px-4 py-2 text-sm font-medium border-b-2 transition-colors', activeRightTab === 'climate_data' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300']"
+            >
+              Climate Data Inspector
+            </button>
+          </div>
+          <button @click="downloadReport" :disabled="isRunning || !lastResults" :class="['px-3 py-1.5 text-sm rounded font-medium shadow flex items-center transition-colors mb-1', (!isRunning && lastResults) ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed']">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            Download Report & CSV
           </button>
         </div>
 
@@ -523,11 +529,6 @@
             <h3 class="text-lg font-semibold text-gray-900">{{ isRunning ? 'Job Status Tracker' : 'Simulation Complete' }}</h3>
             
             <div class="flex space-x-3 items-center">
-              <button v-if="!isRunning && lastResults" @click="downloadReport" class="bg-green-600 text-white px-3 py-1.5 text-sm rounded hover:bg-green-700 font-medium shadow flex items-center transition-colors">
-                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                Download Report & CSV
-              </button>
-
             <!-- Duration Tabs for Ensemble -->
             <div v-if="!isRunning && isILSAXEnsemble" class="flex space-x-1 bg-gray-100 p-1 rounded-md">
               <button 
@@ -782,7 +783,7 @@ const chartOptions = {
   },
   scales: {
     x: {
-      type: 'linear',
+      type: 'logarithmic',
       title: { display: true, text: 'Time (Days)' }
     }
   }
@@ -1316,10 +1317,13 @@ const isValid = computed(() => {
 })
 
 const progressWidth = computed(() => {
-  if (jobStatus.value === 'queued') return '33%'
-  if (jobStatus.value === 'running') return '66%'
   if (jobStatus.value === 'completed') return '100%'
-  return '0%'
+  if (jobStatus.value === 'queued') return '5%'
+  if (subtasks.value.length > 0) {
+    const pct = Math.floor((subtasksCompleted.value / subtasks.value.length) * 100);
+    return Math.max(5, Math.min(95, pct)) + '%'
+  }
+  return jobStatus.value === 'running' ? '50%' : '0%'
 })
 
 const chartOverall = ref(null)
@@ -1385,14 +1389,19 @@ const downloadReport = () => {
     h1, h2 { page-break-after: avoid; }
     img, table { page-break-inside: avoid; }
   }
-</style>
+  <meta charset="utf-8" />
+  <title>BaSIM Engineering Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; max-width: 1000px; margin: 0 auto; color: #333; }
+    h1 { color: #1e3a8a; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
+    h2 { color: #2563eb; margin-top: 2rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #e5e7eb; padding: 0.75rem; text-align: left; }
+    th { background-color: #f9fafb; width: 40%; }
+    img { max-width: 100%; height: auto; margin-top: 1rem; border: 1px solid #e5e7eb; border-radius: 4px; padding: 4px; }
+  </style>
 </head>
 <body>
-  <div class="no-print" style="text-align: right; margin-bottom: 20px;">
-    <button onclick="window.print()" class="btn" style="background: #2563eb;">Print to PDF</button>
-    <a href="data:text/csv;charset=utf-8,${encodeURIComponent(csv)}" download="BaSIM_Results_Median.csv" class="btn">Download Raw CSV</a>
-  </div>
-
   <h1>BaSIM Engineering Report</h1>
   <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
   
@@ -1401,8 +1410,29 @@ const downloadReport = () => {
     <tr><th>Company ID</th><td>${config.value.company_id || 'N/A'}</td></tr>
     <tr><th>User ID</th><td>${config.value.user_id || 'N/A'}</td></tr>
     <tr><th>Project Code</th><td>${config.value.project_code || 'N/A'}</td></tr>
-    <tr><th>Inflow Source</th><td>${config.value.inflow_source}</td></tr>
+    <tr><th>Project Name</th><td>${config.value.project_name || 'N/A'}</td></tr>
+    <tr><th>Scenario Name</th><td>${config.value.scenario_name || 'N/A'}</td></tr>
   </table>
+
+  <h2>Inflow Source Details (${config.value.inflow_source === 'ts1' ? 'TS1 Data' : 'ILSAX Catchment'})</h2>
+  ${config.value.inflow_source === 'ts1' ? `
+    <p>Externally Supplied Hydrographs (.ts1 files).</p>
+    <ul>
+      ${config.value.ts1_files.map(f => `<li>${f.name}</li>`).join('')}
+    </ul>
+  ` : `
+    <table>
+      <tr><th>Coordinates (Lat, Lng)</th><td>${climateData.value ? climateData.value.req?.lat + ', ' + climateData.value.req?.lon : 'N/A'}</td></tr>
+      <tr><th>Climate Scenario</th><td>${climateScenario.value}</td></tr>
+      <tr><th>Temporal Pattern Region</th><td>${climateData.value ? climateData.value.temporal_patterns?.[0]?.region : 'N/A'}</td></tr>
+      <tr><th>Name</th><td>${config.value.catchment.name}</td></tr>
+      <tr><th>Area (ha)</th><td>${config.value.catchment.area_ha}</td></tr>
+      <tr><th>Slope</th><td>${config.value.catchment.slope}</td></tr>
+      <tr><th>Paved Fraction</th><td>${config.value.catchment.paved_fraction}</td></tr>
+      <tr><th>Soil Type</th><td>${config.value.catchment.soil_type}</td></tr>
+      <tr><th>AMC</th><td>${config.value.catchment.amc}</td></tr>
+    </table>
+  `}
 
   <h2>Basin Geometry & Aquifer</h2>
   <table>
@@ -1417,17 +1447,12 @@ const downloadReport = () => {
 
   ${imgStageStorage ? `<h3>Stage-Storage Curve</h3><img src="${imgStageStorage}" style="max-height: 400px; object-fit: contain;" />` : ''}
 
-  <h2>Catchment Parameters (ILSAX)</h2>
-  <table>
-    <tr><th>Name</th><td>${config.value.catchment.name}</td></tr>
-    <tr><th>Area (ha)</th><td>${config.value.catchment.area_ha}</td></tr>
-    <tr><th>Slope</th><td>${config.value.catchment.slope}</td></tr>
-    <tr><th>Paved Fraction</th><td>${config.value.catchment.paved_fraction}</td></tr>
-    <tr><th>Soil Type</th><td>${config.value.catchment.soil_type}</td></tr>
-    <tr><th>AMC</th><td>${config.value.catchment.amc}</td></tr>
-  </table>
-
   <h2>Simulation Results (Critical Duration: ${activeDuration.value} min)</h2>
+  <table>
+    <tr><th>Median Peak Stage (TP5)</th><td>${activeDurationData.value.median_peak_stage?.toFixed(3) || 'N/A'} m AHD</td></tr>
+    <tr><th>Max Peak Stage (TP1)</th><td>${activeDurationData.value.max_peak_stage?.toFixed(3) || 'N/A'} m AHD</td></tr>
+  </table>
+  
   ${imgOverall ? `<h3>Critical Duration Profile</h3><img src="${imgOverall}" />` : ''}
   ${imgStage ? `<h3>Ensemble Stage Hydrographs</h3><img src="${imgStage}" />` : ''}
   ${imgFlow ? `<h3>Ensemble Flow Hydrographs (Median)</h3><img src="${imgFlow}" />` : ''}
@@ -1436,18 +1461,21 @@ const downloadReport = () => {
 </html>
   `
 
+  const projStr = config.value.project_code || 'NoProject'
+  const scenStr = config.value.scenario_name || 'NoScenario'
+
   const blobHtml = new Blob([html], { type: 'text/html' })
   const urlHtml = URL.createObjectURL(blobHtml)
   const aHtml = document.createElement('a')
   aHtml.href = urlHtml
-  aHtml.download = 'BaSIM_Engineering_Report.html'
+  aHtml.download = `BaSIM_Engineering_Report_${projStr}_${scenStr}.html`
   aHtml.click()
   
   const blobCsv = new Blob([csv], { type: 'text/csv' })
   const urlCsv = URL.createObjectURL(blobCsv)
   const aCsv = document.createElement('a')
   aCsv.href = urlCsv
-  aCsv.download = 'BaSIM_Raw_Results.csv'
+  aCsv.download = `BaSIM_Raw_Results_${projStr}_${scenStr}.csv`
   setTimeout(() => aCsv.click(), 500)
 }
 
