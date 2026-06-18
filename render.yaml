@@ -50,7 +50,7 @@ services:
     name: basim-compute-worker
     env: python
     buildCommand: "python scripts/download_modflow.py && pip install -r requirements.txt"
-    startCommand: "celery -A src.api.worker.celery_app worker --loglevel=info"
+    startCommand: "celery -A src.api.worker.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}"
 
     envVars:
       - key: PYTHON_VERSION
