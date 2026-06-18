@@ -304,18 +304,10 @@
         </div>
 
         <!-- Run Button -->
-        <div class="flex items-center space-x-4 mb-4">
-          <label class="flex items-center text-sm font-medium text-gray-700 cursor-pointer">
-            <input type="checkbox" v-model="runLocally" class="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-            Run Locally (Free, No Queue)
-          </label>
-        </div>
-        <button @click="submitJob" :disabled="isRunning || (!isValid && !runLocally)" class="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed font-medium shadow-md">
-          <span v-if="!isRunning && !runLocally">🚀 Submit to Queue (1 Token)</span>
-          <span v-else-if="!isRunning && runLocally">💻 Run</span>
+        <button @click="submitJob" :disabled="isRunning || !isValid" class="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed font-medium shadow-md">
+          <span v-if="!isRunning">🚀 Run Simulation</span>
           <span v-else>⏳ Running...</span>
         </button>
-        <p v-if="!isValid && !runLocally" class="text-red-500 text-sm mt-2">Project Code, Company ID, and User ID are required for cloud runs.</p>
         <p v-if="config.inflow_source === 'ts1' && config.ts1_files.length === 0" class="text-red-500 text-sm mt-2">Please upload at least one TS1 file.</p>
         <p v-if="queueError" class="text-red-600 text-sm mt-2 font-semibold">{{ queueError }}</p>
       </div>
