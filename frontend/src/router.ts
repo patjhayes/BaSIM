@@ -9,6 +9,7 @@ const routes = [
   { path: '/help', component: () => import('./views/HelpView.vue'), meta: { requiresAuth: true } },
   { path: '/calibrate', component: () => import('./views/CalibrationView.vue'), meta: { requiresAuth: true } },
   { path: '/auth', component: () => import('./views/AuthView.vue') },
+  { path: '/reset-password', component: () => import('./views/ResetPasswordView.vue') },
 ]
 
 const router = createRouter({
