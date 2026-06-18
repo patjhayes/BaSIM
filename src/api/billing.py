@@ -31,7 +31,7 @@ def get_balance(project_code: str, user: dict = Depends(get_current_user)):
     return {"project_code": project_code, "credit_balance": project['credit_balance']}
 
 @router.post("/checkout/{project_code}")
-def create_checkout_link(project_code: str, user: dict = Depends(get_current_user)):
+def create_checkout_link(project_code: str, request: Request, user: dict = Depends(get_current_user)):
     """Generates a Stripe checkout link to purchase 1000 credits for $100."""
     # Verify authorization
     proj_resp = supabase_admin.table('projects').select('*').eq('project_code', project_code).execute()
@@ -46,6 +46,9 @@ def create_checkout_link(project_code: str, user: dict = Depends(get_current_use
         raise HTTPException(status_code=403, detail="Not authorized")
 
     try:
+        # Get the origin from the request to redirect back to the correct frontend URL
+        origin = request.headers.get("origin", "https://basim-frontend.onrender.com")
+        
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
@@ -59,8 +62,8 @@ def create_checkout_link(project_code: str, user: dict = Depends(get_current_use
                 'quantity': 1,
             }],
             mode='payment',
-            success_url='https://basim.innealta.com.au/billing',
-            cancel_url='https://basim.innealta.com.au/billing',
+            success_url=f'{origin}/billing',
+            cancel_url=f'{origin}/billing',
             client_reference_id=project_code,
             metadata={
                 'project_code': project_code,
