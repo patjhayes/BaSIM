@@ -1,7 +1,7 @@
 import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
-from square import Square
+from square.client import Square, SquareEnvironment
 from .auth_utils import get_current_user, get_current_admin, supabase_admin
 from pydantic import BaseModel
 
@@ -13,9 +13,11 @@ SQUARE_ENVIRONMENT = os.environ.get("SQUARE_ENVIRONMENT", "sandbox") # or 'produ
 SQUARE_LOCATION_ID = os.environ.get("SQUARE_LOCATION_ID", "placeholder")
 SQUARE_WEBHOOK_SIGNATURE_KEY = os.environ.get("SQUARE_WEBHOOK_SIGNATURE_KEY", "")
 
+sq_env = SquareEnvironment.PRODUCTION if SQUARE_ENVIRONMENT.lower() == 'production' else SquareEnvironment.SANDBOX
+
 square_client = Square(
-    access_token=SQUARE_ACCESS_TOKEN,
-    environment=SQUARE_ENVIRONMENT,
+    token=SQUARE_ACCESS_TOKEN,
+    environment=sq_env,
 )
 
 class CreditAdjustment(BaseModel):
