@@ -1,24 +1,15 @@
 import os
 import uuid
+import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
-from square.client import Square, SquareEnvironment
 from .auth_utils import get_current_user, get_current_admin, supabase_admin
 from pydantic import BaseModel
 
 router = APIRouter()
 
-# Initialize Square Client
-SQUARE_ACCESS_TOKEN = os.environ.get("SQUARE_ACCESS_TOKEN", "placeholder")
-SQUARE_ENVIRONMENT = os.environ.get("SQUARE_ENVIRONMENT", "sandbox") # or 'production'
-SQUARE_LOCATION_ID = os.environ.get("SQUARE_LOCATION_ID", "placeholder")
-SQUARE_WEBHOOK_SIGNATURE_KEY = os.environ.get("SQUARE_WEBHOOK_SIGNATURE_KEY", "")
-
-sq_env = SquareEnvironment.PRODUCTION if SQUARE_ENVIRONMENT.lower() == 'production' else SquareEnvironment.SANDBOX
-
-square_client = Square(
-    token=SQUARE_ACCESS_TOKEN,
-    environment=sq_env,
-)
+# Initialize Stripe
+stripe.api_key = os.environ.get("STRIPE_API_KEY", "placeholder")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 
 class CreditAdjustment(BaseModel):
     project_code: str
@@ -41,7 +32,7 @@ def get_balance(project_code: str, user: dict = Depends(get_current_user)):
 
 @router.post("/checkout/{project_code}")
 def create_checkout_link(project_code: str, user: dict = Depends(get_current_user)):
-    """Generates a Square checkout link to purchase 1000 credits for $100."""
+    """Generates a Stripe checkout link to purchase 1000 credits for $100."""
     # Verify authorization
     proj_resp = supabase_admin.table('projects').select('*').eq('project_code', project_code).execute()
     if not proj_resp.data:
@@ -54,69 +45,64 @@ def create_checkout_link(project_code: str, user: dict = Depends(get_current_use
     elif proj_resp.data[0]['company_id'] != user['company_id'] and not user.get('is_admin'):
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # Generate unique idempotency key
-    idempotency_key = str(uuid.uuid4())
-    
-    body = {
-        "idempotency_key": idempotency_key,
-        "order": {
-            "location_id": SQUARE_LOCATION_ID,
-            "line_items": [
-                {
-                    "name": "1,000 BaSIM Simulation Credits",
-                    "quantity": "1",
-                    "base_price_money": {
-                        "amount": 10000, # $100.00 in cents
-                        "currency": "AUD"
-                    }
-                }
-            ],
-            # Pass the project_code in metadata so webhook knows where to apply credits
-            "metadata": {
-                "project_code": project_code,
-                "user_id": user['id']
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'aud',
+                    'product_data': {
+                        'name': '1,000 BaSIM Simulation Credits',
+                    },
+                    'unit_amount': 10000, # $100.00 in cents
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url='https://basim.innealta.com.au/billing',
+            cancel_url='https://basim.innealta.com.au/billing',
+            client_reference_id=project_code,
+            metadata={
+                'project_code': project_code,
+                'user_id': user['id']
             }
-        },
-        "checkout_options": {
-            # Provide your domain here, or standard redirect
-            "redirect_url": "https://basim.innealta.com.au/billing"
-        }
-    }
-    
-    result = square_client.checkout.create_payment_link(body)
-    
-    if result.is_success():
-        return {"payment_url": result.body['payment_link']['url']}
-    elif result.is_error():
-        raise HTTPException(status_code=500, detail=result.errors)
+        )
+        return {"payment_url": checkout_session.url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/webhook/square")
-async def square_webhook(request: Request):
-    """Handle Square webhooks (specifically payment.updated / payment.created)."""
-    # Note: In production, you must verify the signature using SQUARE_WEBHOOK_SIGNATURE_KEY
-    # from the `x-square-hmacsha256-signature` header.
-    
-    body = await request.json()
-    
-    # We only care about successful payments
-    if body.get('type') == 'payment.updated' or body.get('type') == 'payment.created':
-        payment = body['data']['object']['payment']
-        status = payment.get('status')
+@router.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhooks (specifically checkout.session.completed)."""
+    payload = await request.body()
+    sig_header = request.headers.get('stripe-signature')
+
+    try:
+        # In production, verify the webhook signature
+        if STRIPE_WEBHOOK_SECRET:
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, STRIPE_WEBHOOK_SECRET
+            )
+        else:
+            # Fallback for local testing without signature validation
+            import json
+            event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
+    except ValueError as e:
+        # Invalid payload
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError as e:
+        # Invalid signature
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    # Handle the checkout.session.completed event
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        project_code = session.get('metadata', {}).get('project_code')
         
-        if status == 'COMPLETED':
-            # Need to get the order to read metadata
-            order_id = payment.get('order_id')
-            if order_id:
-                order_res = square_client.orders.retrieve_order(order_id)
-                if order_res.is_success():
-                    order = order_res.body['order']
-                    metadata = order.get('metadata', {})
-                    project_code = metadata.get('project_code')
-                    
-                    if project_code:
-                        # Add 1000 credits
-                        _add_credits(project_code, 1000, 'purchase', description=f"Square Payment {payment['id']}")
-                        
+        if project_code:
+            # Add 1000 credits
+            _add_credits(project_code, 1000, 'purchase', description=f"Stripe Checkout {session['id']}")
+            
     return {"status": "ok"}
 
 @router.post("/admin/adjust_credits")

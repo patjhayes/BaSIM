@@ -13,9 +13,9 @@ services:
           type: redis
           name: basim-redis
           property: connectionString
-      - key: SQUARE_ACCESS_TOKEN
+      - key: STRIPE_API_KEY
         sync: false
-      - key: SQUARE_LOCATION_ID
+      - key: STRIPE_WEBHOOK_SECRET
         sync: false
       - key: SUPABASE_URL
         sync: false
@@ -66,9 +66,9 @@ services:
           type: redis
           name: basim-redis
           property: connectionString
-      - key: SQUARE_ACCESS_TOKEN
+      - key: STRIPE_API_KEY
         sync: false
-      - key: SQUARE_LOCATION_ID
+      - key: STRIPE_WEBHOOK_SECRET
         sync: false
       - key: SUPABASE_URL
         sync: false
