@@ -584,7 +584,7 @@ const chartOptions = {
   },
   scales: {
     x: {
-      type: 'logarithmic',
+      type: 'linear',
       title: { display: true, text: 'Time (Days)' }
     }
   }
