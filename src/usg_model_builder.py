@@ -478,6 +478,18 @@ def run_simulation(ts1_path: str, config: dict):
         max_head_array = None
         max_head_all_array = None
         
+        # Get botm_all to filter out dry cell artifacts (which report their head as their cell bottom)
+        try:
+            ugrid_props = g.get_gridprops_unstructuredgrid()
+            bot_raw = ugrid_props["bot"]
+            if isinstance(bot_raw, list) and len(bot_raw) > 0 and isinstance(bot_raw[0], (int, float)):
+                ncpl = ugrid_props["ncpl"]
+                botm_all = np.concatenate([np.full(n, b) for n, b in zip(ncpl, bot_raw)])
+            else:
+                botm_all = np.array(bot_raw).flatten()
+        except:
+            botm_all = None
+        
         if success and hds_file.exists():
             hds = bf.HeadUFile(str(hds_file))
             kstpkper = hds.get_kstpkper()
@@ -486,7 +498,16 @@ def run_simulation(ts1_path: str, config: dict):
                 
                 # unstructured grid head_array is a list of 1D arrays per layer
                 head_all_flat = np.concatenate(head_array)
-                water_table_ts = np.max(np.array(head_array), axis=0)
+                
+                if botm_all is not None:
+                    dry_mask = head_all_flat <= botm_all + 1e-3
+                    wet_head_flat = np.where(dry_mask, -1e9, head_all_flat)
+                    n_cells_per_layer = len(head_array[0])
+                    wet_head_reshaped = wet_head_flat.reshape(len(head_array), n_cells_per_layer)
+                    water_table_ts = np.max(wet_head_reshaped, axis=0)
+                    water_table_ts = np.where(water_table_ts == -1e9, initial_head, water_table_ts)
+                else:
+                    water_table_ts = np.max(np.array(head_array), axis=0)
                 
                 # Update max head array
                 if max_head_array is None:
@@ -591,15 +612,11 @@ def run_simulation(ts1_path: str, config: dict):
                                 # MODFLOW-USG Upstream Weighting outputs the cell bottom elevation for dry cells.
                                 # To avoid plotting massive horizontal blocks of 'head' outside the basin,
                                 # we must mask out any cell where the head is at or below its bottom elevation.
-                                bot_raw = gridprops["bot"]
-                                if isinstance(bot_raw, list) and len(bot_raw) > 0 and isinstance(bot_raw[0], (int, float)):
-                                    ncpl = gridprops["ncpl"]
-                                    botm_all = np.concatenate([np.full(n, b) for n, b in zip(ncpl, bot_raw)])
+                                if botm_all is not None:
+                                    masked_head_all = np.ma.masked_where(max_head_all_array <= botm_all + 1e-3, max_head_all_array)
                                 else:
-                                    botm_all = np.array(bot_raw).flatten()
-                                # Mask cells where head is effectively at the bottom (dry cell)
-                                masked_head_all = np.ma.masked_where(max_head_all_array <= botm_all + 1e-3, max_head_all_array)
-
+                                    masked_head_all = max_head_all_array
+                                    
                                 fig_cs, ax_cs = plt.subplots(figsize=(8, 4))
                                 pxs = flopy.plot.PlotCrossSection(modelgrid=ugrid, line={'line': [(0, Ly/2), (Lx, Ly/2)]}, ax=ax_cs)
                                 cb_cs = pxs.plot_array(masked_head_all, cmap='viridis', alpha=0.9)
