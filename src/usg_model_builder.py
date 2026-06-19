@@ -621,10 +621,6 @@ def run_simulation(ts1_path: str, config: dict):
                                 pxs = flopy.plot.PlotCrossSection(modelgrid=ugrid, line={'line': [(0, Ly/2), (Lx, Ly/2)]}, ax=ax_cs)
                                 cb_cs = pxs.plot_array(masked_head_all, cmap='viridis', alpha=0.9)
                                 pxs.plot_grid(colors='white', lw=0.2, alpha=0.3)
-                                try:
-                                    pxs.contour_array(masked_head_all, colors='black', linewidths=0.5, levels=10)
-                                except:
-                                    pass
                                 
                                 plt.colorbar(cb_cs, shrink=0.7, label='Peak GW Head (m AHD)')
                                 ax_cs.set_title("Cross-Section (West-East)")
