@@ -372,7 +372,16 @@ def run_simulation(ts1_path: str, config: dict):
         # BAS Package
         strt = np.ones(n_nodes) * initial_head
         strt[basin_nodes_L0] = floor_elev + 1e-4
-        bas = flopy.modflow.ModflowBas(sim, ibound=1, strt=strt)
+        
+        # Make outer cells of Layer 0 inactive so water doesn't flow horizontally "through the air"
+        n_cells_per_layer = n_nodes // nlay
+        layer_0_nodes = np.arange(n_cells_per_layer)
+        outer_L0 = np.setdiff1d(layer_0_nodes, basin_nodes_L0)
+        
+        ibound = np.ones(n_nodes, dtype=int)
+        ibound[outer_L0] = 0
+        
+        bas = flopy.modflow.ModflowBas(sim, ibound=ibound, strt=strt)
         
         # WEL package for Inflow (applied to refined basin nodes in Layer 0)
         # gridprops["area"] is a list of arrays per layer
