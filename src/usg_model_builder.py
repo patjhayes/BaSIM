@@ -557,8 +557,8 @@ def run_simulation(ts1_path: str, config: dict):
                         ugrid = flopy.discretization.UnstructuredGrid(**ugrid_props)
                         pmv = flopy.plot.PlotMapView(modelgrid=ugrid, ax=ax, layer=0)
                         
-                        # Filter dry cells by checking if head is at or below the cell bottom elevation
-                        botm_L0 = np.array(gridprops["bot"])[:len(max_head_array)]
+                        # Filter dry cells by checking if head is at or below the cell bottom elevation (floor_elev for Layer 0)
+                        botm_L0 = floor_elev
                         masked_head = np.ma.masked_where(max_head_array <= botm_L0 + 1e-3, max_head_array)
                         
                         cb = pmv.plot_array(masked_head, cmap='viridis', alpha=0.9)
@@ -589,7 +589,12 @@ def run_simulation(ts1_path: str, config: dict):
                                 # MODFLOW-USG Upstream Weighting outputs the cell bottom elevation for dry cells.
                                 # To avoid plotting massive horizontal blocks of 'head' outside the basin,
                                 # we must mask out any cell where the head is at or below its bottom elevation.
-                                botm_all = np.array(gridprops["bot"])
+                                bot_raw = gridprops["bot"]
+                                if isinstance(bot_raw, list) and len(bot_raw) > 0 and isinstance(bot_raw[0], (int, float)):
+                                    ncpl = gridprops["ncpl"]
+                                    botm_all = np.concatenate([np.full(n, b) for n, b in zip(ncpl, bot_raw)])
+                                else:
+                                    botm_all = np.array(bot_raw).flatten()
                                 # Mask cells where head is effectively at the bottom (dry cell)
                                 masked_head_all = np.ma.masked_where(max_head_all_array <= botm_all + 1e-3, max_head_all_array)
 
