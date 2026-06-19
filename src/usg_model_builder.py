@@ -210,15 +210,25 @@ def run_simulation(ts1_path: str, config: dict):
         top_elev = floor_elev + max_depth
         clogged_bottom = floor_elev - bed_thick
         
-        # Sub-layer the aquifer to ~1.0m thickness to prevent vertical throttling artifacts
+        # Sub-layer the aquifer to prevent vertical throttling artifacts.
+        # Instead of 1.0m uniform layers (which creates 100+ layers for deep aquifers),
+        # use a maximum of 5 geometrically expanding layers to dramatically reduce node count.
         aq_thickness = clogged_bottom - aq_bottom
-        target_thickness = 1.0
-        n_aq_layers = max(1, int(np.ceil(aq_thickness / target_thickness)))
+        n_aq_layers = min(5, max(1, int(np.ceil(aq_thickness / 2.0))))
         
         botm = [floor_elev, clogged_bottom]
-        for i in range(1, n_aq_layers + 1):
-            botm.append(clogged_bottom - i * (aq_thickness / n_aq_layers))
-            
+        
+        if n_aq_layers == 1:
+            botm.append(aq_bottom)
+        else:
+            r = 1.5
+            a = aq_thickness * (1 - r) / (1 - r**n_aq_layers)
+            current_z = clogged_bottom
+            for i in range(n_aq_layers):
+                layer_thick = a * (r**i)
+                current_z -= layer_thick
+                botm.append(current_z)
+                
         nlay = len(botm)
         
         sim_base = flopy.modflow.Modflow(modelname="base", model_ws=str(workspace))
