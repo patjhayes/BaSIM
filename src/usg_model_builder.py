@@ -423,8 +423,9 @@ def run_simulation(ts1_path: str, config: dict):
                 try:
                     intersect = g.intersect([edge], "line", lay)
                     for node in intersect['nodenumber']:
-                        for i in range(nper):
-                            chd_spd[i].append([node, initial_head, initial_head])
+                        if ibound[node] > 0:
+                            for i in range(nper):
+                                chd_spd[i].append([node, initial_head, initial_head])
                 except Exception:
                     pass
         for i in range(nper):
