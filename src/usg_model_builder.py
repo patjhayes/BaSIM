@@ -486,13 +486,14 @@ def run_simulation(ts1_path: str, config: dict):
                 
                 # unstructured grid head_array is a list of 1D arrays per layer
                 head_all_flat = np.concatenate(head_array)
+                water_table_ts = np.max(np.array(head_array), axis=0)
                 
                 # Update max head array
                 if max_head_array is None:
-                    max_head_array = np.copy(head_array[0])
+                    max_head_array = np.copy(water_table_ts)
                     max_head_all_array = np.copy(head_all_flat)
                 else:
-                    max_head_array = np.maximum(max_head_array, head_array[0])
+                    max_head_array = np.maximum(max_head_array, water_table_ts)
                     max_head_all_array = np.maximum(max_head_all_array, head_all_flat)
                     
                 basin_heads = head_array[0][basin_nodes_L0]
@@ -558,8 +559,9 @@ def run_simulation(ts1_path: str, config: dict):
                         pmv = flopy.plot.PlotMapView(modelgrid=ugrid, ax=ax, layer=0)
                         
                         # Filter dry cells by checking if head is at or below the cell bottom elevation (floor_elev for Layer 0)
-                        botm_L0 = floor_elev
-                        masked_head = np.ma.masked_where(max_head_array <= botm_L0 + 1e-3, max_head_array)
+                        # We no longer mask out cells below floor_elev, as max_head_array now represents the true water table
+                        # across all layers, allowing the full mound to be visualised.
+                        masked_head = max_head_array
                         
                         cb = pmv.plot_array(masked_head, cmap='viridis', alpha=0.9)
                         pmv.plot_grid(colors='white', lw=0.2, alpha=0.3)
