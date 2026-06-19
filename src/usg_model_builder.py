@@ -557,8 +557,9 @@ def run_simulation(ts1_path: str, config: dict):
                         ugrid = flopy.discretization.UnstructuredGrid(**ugrid_props)
                         pmv = flopy.plot.PlotMapView(modelgrid=ugrid, ax=ax, layer=0)
                         
-                        # Filter dry cells (-999 or extremely low values)
-                        masked_head = np.ma.masked_where(max_head_array < floor_elev - 100, max_head_array)
+                        # Filter dry cells by checking if head is at or below the cell bottom elevation
+                        botm_L0 = gridprops["bot"][:len(max_head_array)]
+                        masked_head = np.ma.masked_where(max_head_array <= botm_L0 + 1e-3, max_head_array)
                         
                         cb = pmv.plot_array(masked_head, cmap='viridis', alpha=0.9)
                         pmv.plot_grid(colors='white', lw=0.2, alpha=0.3)
@@ -585,7 +586,13 @@ def run_simulation(ts1_path: str, config: dict):
                         cs_b64 = None
                         if max_head_all_array is not None:
                             try:
-                                masked_head_all = np.ma.masked_where(max_head_all_array < aq_bottom - 100, max_head_all_array)
+                                # MODFLOW-USG Upstream Weighting outputs the cell bottom elevation for dry cells.
+                                # To avoid plotting massive horizontal blocks of 'head' outside the basin,
+                                # we must mask out any cell where the head is at or below its bottom elevation.
+                                botm_all = gridprops["bot"]
+                                # Mask cells where head is effectively at the bottom (dry cell)
+                                masked_head_all = np.ma.masked_where(max_head_all_array <= botm_all + 1e-3, max_head_all_array)
+
                                 fig_cs, ax_cs = plt.subplots(figsize=(8, 4))
                                 pxs = flopy.plot.PlotCrossSection(modelgrid=ugrid, line={'line': [(0, Ly/2), (Lx, Ly/2)]}, ax=ax_cs)
                                 cb_cs = pxs.plot_array(masked_head_all, cmap='viridis', alpha=0.9)
