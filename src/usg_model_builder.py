@@ -195,17 +195,15 @@ def run_simulation(ts1_path: str, config: dict):
             basin_length = max_x - min_x
             basin_width = max_y - min_y
             
-        # We need a base grid to refine from.
-        # Make the base grid finer so contours are smooth outside the basin.
+        # Use a coarse base grid and rely on Gridgen for nested refinement.
+        # This keeps the total node count small for faster runtimes,
+        # while still providing smooth contours via nested refinement buffers.
         max_dim = max(basin_length, basin_width)
         Lx = max_dim * 10
         Ly = max_dim * 10
         
-        # Target base cell size ~ 5m to 10m
-        target_base = max(5.0, min(10.0, max_dim / 2.0))
-        ncol = min(80, max(20, int(Lx / target_base)))
-        nrow = min(80, max(20, int(Ly / target_base)))
-        
+        ncol = 25
+        nrow = 25
         delr = Lx / ncol
         delc = Ly / nrow
         
@@ -246,20 +244,38 @@ def run_simulation(ts1_path: str, config: dict):
                 (x0 + basin_length - eps, y0 + basin_width - eps), (x0 + eps, y0 + basin_width - eps)
             ])
             
-        # Create an intermediate buffer polygon for smoother grid transition
-        buffer_dist = max_dim
-        buffer_poly = Polygon([
-            (x0 - buffer_dist, y0 - buffer_dist), 
-            (x0 + basin_length + buffer_dist, y0 - buffer_dist), 
-            (x0 + basin_length + buffer_dist, y0 + basin_width + buffer_dist), 
-            (x0 - buffer_dist, y0 + basin_width + buffer_dist)
+        # Outer buffer (coarse transition)
+        outer_buffer_dist = max_dim * 2
+        outer_buffer_poly = Polygon([
+            (x0 - outer_buffer_dist, y0 - outer_buffer_dist), 
+            (x0 + basin_length + outer_buffer_dist, y0 - outer_buffer_dist), 
+            (x0 + basin_length + outer_buffer_dist, y0 + basin_width + outer_buffer_dist), 
+            (x0 - outer_buffer_dist, y0 + basin_width + outer_buffer_dist)
+        ])
+        
+        # Inner buffer (smoother transition closer to basin)
+        inner_buffer_dist = max_dim * 0.75
+        inner_buffer_poly = Polygon([
+            (x0 - inner_buffer_dist, y0 - inner_buffer_dist), 
+            (x0 + basin_length + inner_buffer_dist, y0 - inner_buffer_dist), 
+            (x0 + basin_length + inner_buffer_dist, y0 + basin_width + inner_buffer_dist), 
+            (x0 - inner_buffer_dist, y0 + basin_width + inner_buffer_dist)
         ])
         
         g = Gridgen(dis_base, model_ws=str(workspace), exe_name=gridgen_exe)
-        # Refine buffer area to level 1
-        g.add_refinement_features([buffer_poly], featuretype="polygon", level=1, layers=list(range(nlay)))
-        # Refine basin area to level 2 or 3 depending on base cell size
-        basin_level = 3 if (delr > 5.0) else 2
+        
+        # We always want the basin cells to be roughly 1m to 2.5m.
+        # Base cell size is (Lx / 25) = (max_dim * 10) / 25 = max_dim * 0.4.
+        # For max_dim=20, base=8m.
+        # For max_dim=50, base=20m.
+        # We use levels 1, 2, and 3 to step it down.
+        g.add_refinement_features([outer_buffer_poly], featuretype="polygon", level=1, layers=list(range(nlay)))
+        g.add_refinement_features([inner_buffer_poly], featuretype="polygon", level=2, layers=list(range(nlay)))
+        
+        basin_level = 3
+        if delr > 15.0:
+            basin_level = 4  # Need deeper refinement if base cells are huge (e.g. max_dim > 40)
+            
         g.add_refinement_features([basin_poly], featuretype="polygon", level=basin_level, layers=list(range(nlay)))
         import time
         max_build_retries = 5
