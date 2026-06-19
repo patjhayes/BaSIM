@@ -455,7 +455,14 @@ async def ws_progress(ws: WebSocket, client_id: str):
             logger.error(f"WS writer fatal error: {e}")
 
     try:
-        await asyncio.gather(reader(), writer())
+        reader_task = asyncio.create_task(reader())
+        writer_task = asyncio.create_task(writer())
+        done, pending = await asyncio.wait(
+            [reader_task, writer_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        for task in pending:
+            task.cancel()
     finally:
         await pubsub.unsubscribe(f"sim:{client_id}")
         await r.aclose()
