@@ -450,6 +450,7 @@ def run_simulation(ts1_path: str, config: dict):
         peak_time = 0.0
         
         max_head_array = None
+        max_head_all_array = None
         
         if success and hds_file.exists():
             hds = bf.HeadUFile(str(hds_file))
@@ -457,11 +458,16 @@ def run_simulation(ts1_path: str, config: dict):
             for i, (kstp, kper) in enumerate(kstpkper):
                 head_array = hds.get_data(kstpkper=(kstp, kper))
                 
+                # unstructured grid head_array is a list of 1D arrays per layer
+                head_all_flat = np.concatenate(head_array)
+                
                 # Update max head array
                 if max_head_array is None:
                     max_head_array = np.copy(head_array[0])
+                    max_head_all_array = np.copy(head_all_flat)
                 else:
                     max_head_array = np.maximum(max_head_array, head_array[0])
+                    max_head_all_array = np.maximum(max_head_all_array, head_all_flat)
                     
                 basin_heads = head_array[0][basin_nodes_L0]
                 stage = float(np.max(basin_heads))
@@ -551,33 +557,38 @@ def run_simulation(ts1_path: str, config: dict):
                         
                         # Generate Cross-Section Visualization
                         cs_b64 = None
-                        try:
-                            fig_cs, ax_cs = plt.subplots(figsize=(8, 4))
-                            pxs = flopy.plot.PlotCrossSection(modelgrid=ugrid, line={'line': [(0, Ly/2), (Lx, Ly/2)]}, ax=ax_cs)
-                            cb_cs = pxs.plot_array(masked_head, cmap='viridis', alpha=0.9)
-                            pxs.plot_grid(colors='white', lw=0.2, alpha=0.3)
-                            pxs.contour_array(masked_head, colors='black', linewidths=0.5, levels=10)
-                            
-                            plt.colorbar(cb_cs, shrink=0.7, label='Peak GW Head (m AHD)')
-                            ax_cs.set_title("Cross-Section (West-East)")
-                            ax_cs.set_xlabel("Distance along section (m)")
-                            ax_cs.set_ylabel("Elevation (m AHD)")
-                            
-                            # Add basin floor marker
-                            x_basin = [Lx/2 - basin_length/2, Lx/2 + basin_length/2]
-                            y_basin = [floor_elev, floor_elev]
-                            ax_cs.plot(x_basin, y_basin, color='red', linewidth=3, label='Basin Floor')
-                            ax_cs.legend(loc='upper right')
-                            
-                            buf_cs = io.BytesIO()
-                            plt.savefig(buf_cs, format='png', bbox_inches='tight', dpi=150)
-                            plt.close(fig_cs)
-                            buf_cs.seek(0)
-                            cs_b64 = f"data:image/png;base64,{base64.b64encode(buf_cs.read()).decode('utf-8')}"
-                        except Exception as e:
-                            import traceback
-                            print(f"Failed to generate cross section: {e}")
-                            traceback.print_exc()
+                        if max_head_all_array is not None:
+                            try:
+                                masked_head_all = np.ma.masked_where(max_head_all_array < aq_bottom - 100, max_head_all_array)
+                                fig_cs, ax_cs = plt.subplots(figsize=(8, 4))
+                                pxs = flopy.plot.PlotCrossSection(modelgrid=ugrid, line={'line': [(0, Ly/2), (Lx, Ly/2)]}, ax=ax_cs)
+                                cb_cs = pxs.plot_array(masked_head_all, cmap='viridis', alpha=0.9)
+                                pxs.plot_grid(colors='white', lw=0.2, alpha=0.3)
+                                try:
+                                    pxs.contour_array(masked_head_all, colors='black', linewidths=0.5, levels=10)
+                                except:
+                                    pass
+                                
+                                plt.colorbar(cb_cs, shrink=0.7, label='Peak GW Head (m AHD)')
+                                ax_cs.set_title("Cross-Section (West-East)")
+                                ax_cs.set_xlabel("Distance along section (m)")
+                                ax_cs.set_ylabel("Elevation (m AHD)")
+                                
+                                # Add basin floor marker
+                                x_basin = [Lx/2 - basin_length/2, Lx/2 + basin_length/2]
+                                y_basin = [floor_elev, floor_elev]
+                                ax_cs.plot(x_basin, y_basin, color='red', linewidth=3, label='Basin Floor')
+                                ax_cs.legend(loc='upper right')
+                                
+                                buf_cs = io.BytesIO()
+                                plt.savefig(buf_cs, format='png', bbox_inches='tight', dpi=150)
+                                plt.close(fig_cs)
+                                buf_cs.seek(0)
+                                cs_b64 = f"data:image/png;base64,{base64.b64encode(buf_cs.read()).decode('utf-8')}"
+                            except Exception as e:
+                                import traceback
+                                print(f"Failed to generate cross section: {e}")
+                                traceback.print_exc()
                             
                     except Exception as e:
                         import traceback
