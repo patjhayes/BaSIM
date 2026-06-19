@@ -196,12 +196,16 @@ def run_simulation(ts1_path: str, config: dict):
             basin_width = max_y - min_y
             
         # We need a base grid to refine from.
-        # Gridgen is known to segfault on highly non-square base cells when refining deeply.
-        # Let's force the base grid to be perfectly square.
+        # Make the base grid finer so contours are smooth outside the basin.
         max_dim = max(basin_length, basin_width)
         Lx = max_dim * 10
         Ly = max_dim * 10
-        nrow, ncol = 10, 10
+        
+        # Target base cell size ~ 5m to 10m
+        target_base = max(5.0, min(10.0, max_dim / 2.0))
+        ncol = min(80, max(20, int(Lx / target_base)))
+        nrow = min(80, max(20, int(Ly / target_base)))
+        
         delr = Lx / ncol
         delc = Ly / nrow
         
@@ -241,9 +245,22 @@ def run_simulation(ts1_path: str, config: dict):
                 (x0 + eps, y0 + eps), (x0 + basin_length - eps, y0 + eps), 
                 (x0 + basin_length - eps, y0 + basin_width - eps), (x0 + eps, y0 + basin_width - eps)
             ])
+            
+        # Create an intermediate buffer polygon for smoother grid transition
+        buffer_dist = max_dim
+        buffer_poly = Polygon([
+            (x0 - buffer_dist, y0 - buffer_dist), 
+            (x0 + basin_length + buffer_dist, y0 - buffer_dist), 
+            (x0 + basin_length + buffer_dist, y0 + basin_width + buffer_dist), 
+            (x0 - buffer_dist, y0 + basin_width + buffer_dist)
+        ])
         
         g = Gridgen(dis_base, model_ws=str(workspace), exe_name=gridgen_exe)
-        g.add_refinement_features([basin_poly], featuretype="polygon", level=3, layers=list(range(nlay)))
+        # Refine buffer area to level 1
+        g.add_refinement_features([buffer_poly], featuretype="polygon", level=1, layers=list(range(nlay)))
+        # Refine basin area to level 2 or 3 depending on base cell size
+        basin_level = 3 if (delr > 5.0) else 2
+        g.add_refinement_features([basin_poly], featuretype="polygon", level=basin_level, layers=list(range(nlay)))
         import time
         max_build_retries = 5
         for attempt in range(max_build_retries):
@@ -517,6 +534,8 @@ def run_simulation(ts1_path: str, config: dict):
                         
                         plt.colorbar(cb, shrink=0.7, label='Peak GW Head (m AHD)')
                         ax.set_title("Peak Groundwater Contours")
+                        ax.set_xlabel("Easting (m)")
+                        ax.set_ylabel("Northing (m)")
                         
                         # Add basin boundary for context
                         if isinstance(basin_poly, Polygon):
@@ -529,6 +548,37 @@ def run_simulation(ts1_path: str, config: dict):
                         plt.close(fig)
                         buf.seek(0)
                         heatmap_b64 = f"data:image/png;base64,{base64.b64encode(buf.read()).decode('utf-8')}"
+                        
+                        # Generate Cross-Section Visualization
+                        cs_b64 = None
+                        try:
+                            fig_cs, ax_cs = plt.subplots(figsize=(8, 4))
+                            pxs = flopy.plot.PlotCrossSection(modelgrid=ugrid, line={'line': [(0, Ly/2), (Lx, Ly/2)]}, ax=ax_cs)
+                            cb_cs = pxs.plot_array(masked_head, cmap='viridis', alpha=0.9)
+                            pxs.plot_grid(colors='white', lw=0.2, alpha=0.3)
+                            pxs.contour_array(masked_head, colors='black', linewidths=0.5, levels=10)
+                            
+                            plt.colorbar(cb_cs, shrink=0.7, label='Peak GW Head (m AHD)')
+                            ax_cs.set_title("Cross-Section (West-East)")
+                            ax_cs.set_xlabel("Distance along section (m)")
+                            ax_cs.set_ylabel("Elevation (m AHD)")
+                            
+                            # Add basin floor marker
+                            x_basin = [Lx/2 - basin_length/2, Lx/2 + basin_length/2]
+                            y_basin = [floor_elev, floor_elev]
+                            ax_cs.plot(x_basin, y_basin, color='red', linewidth=3, label='Basin Floor')
+                            ax_cs.legend(loc='upper right')
+                            
+                            buf_cs = io.BytesIO()
+                            plt.savefig(buf_cs, format='png', bbox_inches='tight', dpi=150)
+                            plt.close(fig_cs)
+                            buf_cs.seek(0)
+                            cs_b64 = f"data:image/png;base64,{base64.b64encode(buf_cs.read()).decode('utf-8')}"
+                        except Exception as e:
+                            import traceback
+                            print(f"Failed to generate cross section: {e}")
+                            traceback.print_exc()
+                            
                     except Exception as e:
                         import traceback
                         print(f"Failed to generate heatmap: {e}")
@@ -553,6 +603,8 @@ def run_simulation(ts1_path: str, config: dict):
                 }
                 if heatmap_b64:
                     timeseries_payload["heatmap_base64"] = heatmap_b64
+                if cs_b64:
+                    timeseries_payload["cross_section_base64"] = cs_b64
                 
             except Exception as e:
                 infiltration_rating = None
