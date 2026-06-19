@@ -286,8 +286,6 @@ async def simulate(cfg: Dict, bg: BackgroundTasks, user: dict = Depends(get_curr
         cost = len(ensemble_rainfalls) if ensemble_rainfalls else 1
         
     project_code = cfg.get("project_code")
-    if not project_code:
-        raise HTTPException(status_code=400, detail="project_code is required")
         
     # 2. Check .gov.au and innealta free tier
     email = user.get("email", "")
@@ -295,6 +293,9 @@ async def simulate(cfg: Dict, bg: BackgroundTasks, user: dict = Depends(get_curr
     
     # 3. Check credits and deduct if not .gov.au
     if not is_gov:
+        if not project_code:
+            raise HTTPException(status_code=400, detail="project_code is required for commercial users.")
+            
         # We need to query the balance natively via service role
         from src.api.auth_utils import supabase_admin
         proj_resp = supabase_admin.table('projects').select('credit_balance, company_id').eq('project_code', project_code).execute()
