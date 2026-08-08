@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BaSIM Project Billing</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css?v=16" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    window.BASIM_CONFIG = {
+      apiUrl: "%VITE_API_URL%",
+      supabaseUrl: "%VITE_SUPABASE_URL%",
+      supabaseAnonKey: "%VITE_SUPABASE_ANON_KEY%"
+    };
+  </script>
+  <style>
+    .billing-shell { width: min(760px, calc(100% - 2rem)); margin: 2rem auto; }
+    .billing-panel { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; box-shadow: var(--shadow); }
+    .billing-actions { display: grid; grid-template-columns: 1fr auto; gap: .75rem; align-items: end; }
+    .balance { margin: 1rem 0; padding: 1rem 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .balance strong { display: block; color: var(--primary); font-size: 2rem; }
+    .billing-message { min-height: 1.5rem; margin-top: .75rem; color: var(--muted); }
+    @media (max-width: 600px) { .billing-actions { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/></svg>
+      <div><h1>BaSIM</h1><span>Project Billing</span></div>
+    </div>
+    <nav><a href="/index.html">Back to analysis</a></nav>
+  </header>
+  <main class="billing-shell">
+    <section class="billing-panel">
+      <h2>Project Credits</h2>
+      <p>Each design or clogging submission uses one credit. Government and Innealta accounts run free of charge.</p>
+      <div class="billing-actions">
+        <div class="field">
+          <label for="project-code">Project Code</label>
+          <input id="project-code" type="text" placeholder="e.g. PRJ-2026-001" autocomplete="off" />
+        </div>
+        <button class="btn btn-primary" id="check-balance" type="button">Check Balance</button>
+      </div>
+      <div class="balance" id="balance" hidden>
+        <span>Available credits</span>
+        <strong id="balance-value">0</strong>
+      </div>
+      <button class="btn btn-primary" id="buy-credits" type="button" disabled>Buy 1,000 Credits - $100 AUD</button>
+      <div class="billing-message" id="message" role="status"></div>
+    </section>
+  </main>
+  <script>
+    const config = window.BASIM_CONFIG || {};
+    const value = (candidate) => candidate && !String(candidate).startsWith("%VITE_") ? String(candidate) : "";
+    const apiBase = value(config.apiUrl).replace(/\/$/, "");
+    const client = window.supabase.createClient(value(config.supabaseUrl), value(config.supabaseAnonKey));
+    const projectInput = document.getElementById("project-code");
+    const message = document.getElementById("message");
+    const balance = document.getElementById("balance");
+    const balanceValue = document.getElementById("balance-value");
+    const buyButton = document.getElementById("buy-credits");
+
+    async function headers() {
+      const { data } = await client.auth.getSession();
+      if (!data.session) {
+        window.location.href = "./login.html";
+        throw new Error("Sign in required");
+      }
+      return { Authorization: `Bearer ${data.session.access_token}` };
+    }
+
+    async function checkBalance() {
+      const projectCode = projectInput.value.trim();
+      if (!projectCode) return;
+      message.textContent = "Loading balance...";
+      try {
+        const response = await fetch(`${apiBase}/api/billing/balance/${encodeURIComponent(projectCode)}`, { headers: await headers() });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.detail || "Unable to load balance");
+        balanceValue.textContent = body.credit_balance.toLocaleString();
+        balance.hidden = false;
+        buyButton.disabled = false;
+        message.textContent = "";
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    }
+
+    async function buyCredits() {
+      const projectCode = projectInput.value.trim();
+      buyButton.disabled = true;
+      message.textContent = "Opening secure checkout...";
+      try {
+        const response = await fetch(`${apiBase}/api/billing/checkout/${encodeURIComponent(projectCode)}`, { method: "POST", headers: await headers() });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.detail || "Unable to create checkout");
+        window.location.href = body.payment_url;
+      } catch (error) {
+        message.textContent = error.message;
+        buyButton.disabled = false;
+      }
+    }
+
+    document.getElementById("check-balance").addEventListener("click", checkBalance);
+    buyButton.addEventListener("click", buyCredits);
+    headers().catch(() => {});
+  </script>
+</body>
+</html>

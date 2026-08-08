@@ -1,12 +1,537 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BaSIM</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GAH-3D Web Application</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+
+  <!-- Leaflet Point-in-Polygon -->
+  <script src="https://unpkg.com/@mapbox/leaflet-pip@1.1.0/leaflet-pip.js"></script>
+
+  <!-- Supabase Auth -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    window.BASIM_CONFIG = {
+      apiUrl: "%VITE_API_URL%",
+      supabaseUrl: "%VITE_SUPABASE_URL%",
+      supabaseAnonKey: "%VITE_SUPABASE_ANON_KEY%"
+    };
+  </script>
+
+  <!-- jsPDF + autoTable (PDF report generation) -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+
+  <!-- BaSIM 2D section + plan module -->
+  <script src="/static/basim-section.js?v=2"></script>
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="/static/style.css?v=16" />
+</head>
+<body>
+
+<!-- ── Header ────────────────────────────────────────────────────────── -->
+<header>
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/></svg>
+    <div>
+      <h1>GAH-3D</h1>
+      <span>Green-Ampt-Hantush 3D Basin Engine</span>
+    </div>
+  </div>
+  <nav>
+    <a href="/help.html" target="_blank" style="margin-right:.5rem">Technical Reference</a>
+    <a href="/billing.html" style="margin-right:.5rem">Billing</a>
+    <a href="https://innealta.com.au" target="_blank">innealta.com.au</a>
+    <a href="#" id="auth-link" style="margin-left:1rem;color:#ef4444">Logout</a>
+  </nav>
+</header>
+
+<!-- ── Main grid ─────────────────────────────────────────────────────── -->
+<div class="app-grid">
+
+  <!-- ── Sidebar ───────────────────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+
+    <!-- Location -->
+    <div class="card">
+      <h3>📍 Site Location</h3>
+      <p style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">Click the map or enter coordinates</p>
+      <div class="row">
+        <div class="field">
+          <label>Latitude</label>
+          <input type="number" id="inp-lat" value="-31.9505" step="0.0001" min="-44" max="-10" />
+        </div>
+        <div class="field">
+          <label>Longitude</label>
+          <input type="number" id="inp-lng" value="115.8605" step="0.0001" min="112" max="154" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Project Code <span class="info-bubble" title="Required for commercial accounts; government and Innealta accounts are free-tier.">&#9432;</span></label>
+        <input type="text" id="inp-project-code" placeholder="e.g. PRJ-2026-001" autocomplete="off" />
+      </div>
+    </div>
+
+    <!-- Catchments -->
+    <div class="card">
+      <h3>🏠 Catchments</h3>
+      <div id="catchments-list"></div>
+      <button class="btn btn-outline btn-sm" style="margin-top:.4rem" onclick="addCatchment()">+ Add Catchment</button>
+    </div>
+
+    <!-- Storm settings -->
+    <div class="card">
+      <h3>🌧️ Storm Settings</h3>
+      <div class="field">
+        <label>AEP to analyse</label>
+        <select id="inp-aeps">
+          <option value="63.2">63.2% (EY&nbsp;1)</option>
+          <option value="50">50%</option>
+          <option value="20">20% (5yr ARI)</option>
+          <option value="10" selected>10% (10yr ARI)</option>
+          <option value="5" selected>5% (20yr ARI)</option>
+          <option value="2">2% (50yr ARI)</option>
+          <option value="1">1% (100yr ARI)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;justify-content:space-between">
+          Storm Durations
+          <span class="dur-toggle" onclick="toggleAllDurations()" style="font-size:.72rem;cursor:pointer;color:var(--primary);text-decoration:underline">Select / Deselect All</span>
+        </label>
+        <div class="duration-grid" id="duration-grid"></div>
+      </div>
+      <div class="row">
+      </div>
+    </div>
+
+    <!-- Soakwell design -->
+    <div class="card">
+      <h3>🪨 GAH-3D Basin Design</h3>
+      <div class="row">
+        <div class="field">
+          <label>Vertical Hydraulic Conductivity (Kv)
+            <a href="/help.html#k-value-selection" target="_blank" class="info-link" style="font-size: 0.75rem; color: #3b82f6; text-decoration: none; margin-left: 0.3rem;">[Learn more in the Technical Reference Manual]</a>
+            <span class="info-bubble" title="Enter the field-tested vertical saturated hydraulic conductivity of the shallow vadose zone. Best derived from shallow, dry-zone testing (e.g., double-ring infiltrometers).">&#9432;</span>
+          </label>
+          <input type="number" id="inp-kv" value="1.2" step="0.1" min="0.01" />
+        </div>
+        <div class="field">
+          <label>Horizontal Hyd. Conductivity (Kh) [Optional]
+            <span class="info-bubble" title="Enter the horizontal hydraulic conductivity of the saturated aquifer. This parameter drives the lateral Transmissivity of the Hantush groundwater mound. If left blank, the model assumes conservative isotropic conditions (Kh = Kv).">&#9432;</span>
+          </label>
+          <input type="number" id="inp-kh" placeholder="Leave blank for Kh = Kv" step="0.1" min="0.01" />
+        </div>
+        <div class="field" style="display:none">
+          <label>Drain time (hours)</label>
+          <input type="number" id="inp-drain" value="24" step="1" min="1" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Soil Moderation Factor (U)
+          <span class="info-bubble" title="For Infiltration Basin Design, a Soil Moderation Factor (U) is applied to field-measured hydraulic conductivity.&#10;&#10;Soils are heterogeneous — point-scale field tests can misrepresent areal hydraulic conductivity. Field tests tend to overestimate sandy soils and underestimate clayey soils.&#10;&#10;Recommended values (Engineers Australia, 2006):&#10;  Sand: 0.5 (halves tested rate)&#10;  Sandy Clay: 1.0 (no change)&#10;  Medium/Heavy Clay: 2.0 (doubles tested rate)&#10;&#10;If using a calculated long-term conductivity value rather than a raw field test, U = 1.0 may be applied.">&#9432;</span>
+        </label>
+        <input type="number" id="inp-safety" value="0.5" step="0.1" min="0.1" />
+      </div>
+      <div id="basin-config">
+        <h4 style="margin-top:.6rem;font-size:.82rem;color:var(--primary)">Basin Geometry</h4>
+        <div class="row">
+          <div class="field">
+            <label>Base Length (m)</label>
+            <input type="number" id="inp-basin-length" value="8" step="0.1" min="0.1" />
+          </div>
+          <div class="field">
+            <label>Base Width (m)</label>
+            <input type="number" id="inp-basin-width" value="5" step="0.1" min="0.1" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Side Slope (1:X)</label>
+            <input type="number" id="inp-basin-side-slope" value="4" step="0.1" min="0.5" />
+          </div>
+          <div class="field">
+            <label>Max Depth (m)</label>
+            <input type="number" id="inp-basin-depth" value="1.2" step="0.1" min="0.1" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Basin Soil Type Defaults</label>
+            <select id="inp-basin-soil-profile">
+              <option value="Sand" selected>Sand (default)</option>
+              <option value="Loamy Sand">Loamy Sand</option>
+              <option value="Sandy Loam">Sandy Loam</option>
+              <option value="Loam">Loam</option>
+              <option value="Silt Loam">Silt Loam</option>
+              <option value="Silt">Silt</option>
+              <option value="Sandy Clay Loam">Sandy Clay Loam</option>
+              <option value="Clay Loam">Clay Loam</option>
+              <option value="Silty Clay Loam">Silty Clay Loam</option>
+              <option value="Sandy Clay">Sandy Clay</option>
+              <option value="Silty Clay">Silty Clay</option>
+              <option value="Clay">Clay</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Advanced Parameter Input</label>
+            <select id="inp-basin-param-mode">
+              <option value="defaults" selected>Use soil-type defaults</option>
+              <option value="custom">Specify custom values</option>
+            </select>
+          </div>
+        </div>
+        <div class="advanced-soil-details" style="margin-top: 1rem;">
+          <h4 style="font-size:.82rem;color:var(--primary)">Soil Parameters</h4>
+          <p id="basin-default-note" style="margin-top:.45rem;font-size:.74rem;color:var(--muted)">
+            Using soil-type defaults. Switch to "Specify custom values" to edit manually.
+          </p>
+          <div class="row" id="basin-custom-params" style="margin-top:.45rem; display:flex">
+            <div class="field">
+              <label>Initial Moisture Deficit (Δθ)</label>
+              <input type="number" id="inp-basin-deficit" value="0.2" step="0.01" min="0" max="1" />
+            </div>
+            <div class="field">
+              <label>Capillary Suction Head (ψ) [m]</label>
+              <input type="number" id="inp-basin-suction" value="0.15" step="0.01" min="0" />
+            </div>
+          </div>
+
+        <h4 style="font-size:.82rem;color:var(--primary); margin-top: 1.2rem;">Groundwater Parameters</h4>
+        <div class="row" style="margin-top:.45rem">
+          <div class="field">
+            <label>Specific Yield (Sy)</label>
+            <input type="number" id="inp-basin-specific-yield" value="0.25" step="0.01" min="0" max="1" />
+          </div>
+          <div class="field">
+            <label>Basin Invert Level (m AHD)</label>
+            <input type="number" id="inp-surface-lvl" value="10.0" step="0.1" />
+          </div>
+          <div class="field">
+            <label>Design Groundwater Level (m AHD)</label>
+            <input type="number" id="inp-design-gwl" value="7.0" step="0.1" />
+          </div>
+          <div class="field">
+            <label>Base Aquifer Level (m AHD)</label>
+            <input type="number" id="inp-base-aquifer-lvl" value="0.0" step="0.1" />
+          </div>
+        </div>
+
+
+        </div>
+      </div>
+
+      <div class="toggle-row" style="display:none">
+        <input type="checkbox" id="inp-live" checked />
+        <label for="inp-live">Use live ARR data (requires internet)</label>
+      </div>
+    </div>
+
+    <!-- Hydraulic Outflow Structures -->
+    <div class="card">
+      <h3>🔧 Hydraulic Structures</h3>
+      <p style="font-size:.75rem;color:var(--muted);margin-bottom:.6rem">
+        Optional outflow structures that extract water from the basin surface.
+        Multiple structures may be added. Structures operate on the surface
+        storage; the infiltration + mounding mechanics are unchanged.
+      </p>
+      <div class="toggle-row">
+        <input type="checkbox" id="inp-structures-enabled" onchange="toggleStructuresUI()" />
+        <label for="inp-structures-enabled">Enable hydraulic structures</label>
+      </div>
+      <div id="structures-config" style="display:none">
+        <div class="row" style="margin-top:.6rem">
+          <div class="field">
+            <label>Add Structure</label>
+            <select id="inp-structure-type">
+              <option value="weir">Broad-Crested Weir</option>
+              <option value="culvert">Culvert (HY-8)</option>
+              <option value="grated_pit">Grated Pit (QUDM)</option>
+            </select>
+          </div>
+          <div class="field" style="display:flex;align-items:flex-end">
+            <button class="btn btn-outline btn-sm" onclick="addStructure()">+ Add</button>
+          </div>
+        </div>
+        <div id="structures-list" style="margin-top:.6rem"></div>
+      </div>
+    </div>
+
+    <!-- Climate Change Scenario -->
+    <div class="card">
+      <h3>🌡️ Climate Change Scenario</h3>
+      <div class="row">
+        <div class="field">
+          <label>SSP Scenario</label>
+          <select id="inp-cc-scenario">
+            <option value="Historical" selected>Historical</option>
+            <option value="SSP1-2.6">SSP1-2.6 (Low emissions)</option>
+            <option value="SSP2-4.5">SSP2-4.5 (Intermediate)</option>
+            <option value="SSP3-7.0">SSP3-7.0 (High emissions)</option>
+            <option value="SSP5-8.5">SSP5-8.5 (Very high)</option>
+          </select>
+        </div>
+        <div class="field" id="cc-epoch-field" style="display:none">
+          <label>Planning horizon</label>
+          <select id="inp-cc-epoch">
+            <option value="2030">2030</option>
+            <option value="2040">2040</option>
+            <option value="2050" selected>2050</option>
+            <option value="2060">2060</option>
+            <option value="2070">2070</option>
+            <option value="2080">2080</option>
+            <option value="2090">2090</option>
+            <option value="2100">2100</option>
+          </select>
+        </div>
+      </div>
+      <p id="cc-info" class="muted" style="font-size:.75rem;margin-top:.3rem;color:var(--muted)">
+        <em>(i) Historical — only to be used for historical assessments</em>
+      </p>
+    </div>
+
+    <!-- Run -->
+    <button class="btn btn-primary btn-run" id="btn-run" onclick="runSimulation()">
+      ▶ Run Analysis
+    </button>
+
+  </aside>
+
+  <!-- ── Main area ─────────────────────────────────────────────────── -->
+  <div class="main">
+    <div id="map"></div>
+
+    <div class="results-area" id="results-area">
+
+      <!-- ── Design Preview (always visible, live-updating 2D section + plan) ── -->
+      <div class="card design-preview-card" id="design-preview-card">
+        <h3 style="margin-bottom:.5rem">📐 Design Preview</h3>
+        <p style="font-size:.75rem;color:var(--muted);margin-bottom:.6rem">
+          Live 2D section &amp; plan. Updates as you edit geometry, groundwater and
+          hydraulic structures — before you run. After a run, the section shows the
+          critical ponded water level and peak groundwater mound.
+        </p>
+        <div class="design-preview">
+          <div class="preview-pane"><canvas id="section-canvas"></canvas></div>
+          <div class="preview-pane"><canvas id="plan-canvas"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Placeholder before first run -->
+      <div class="placeholder" id="placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/>
+        </svg>
+        <p>Click the map to set your site location, configure your<br/>catchments and soil parameters, then press <strong>Run Analysis</strong>.</p>
+      </div>
+
+      <!-- Roldin progress panel (shown during slow coupled-model runs) -->
+      <div id="simulation-progress" style="display:none;padding:1.2rem 1.4rem">
+        <div style="font-size:.78rem;font-weight:600;color:#1e40af;margin-bottom:.5rem;letter-spacing:.02em">
+          ⏳ RUNNING GREEN-AMPT-HANTUSH 3D BASIN ENGINE
+        </div>
+        <div style="background:#e2e8f0;border-radius:6px;height:10px;margin-bottom:.8rem;overflow:hidden">
+          <div id="progress-bar" style="background:linear-gradient(90deg,#2563eb,#3b82f6);height:10px;border-radius:6px;width:0%;transition:width .4s ease"></div>
+        </div>
+        <div id="progress-current-storm" style="font-size:.78rem;color:#475569;margin-bottom:.6rem;min-height:1.1em"></div>
+        <div id="progress-storm-list" style="font-size:.74rem;line-height:2;max-height:240px;overflow-y:auto;color:#64748b;font-family:monospace"></div>
+      </div>
+
+      <!-- Results (hidden until first run) -->
+      <div id="results-container" style="display:none">
+        <div id="results-lock-bar" style="display:none;align-items:center;gap:.6rem;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:.5rem .8rem;margin-bottom:.7rem;font-size:.8rem;color:#92400e">
+          <span style="font-weight:700;white-space:nowrap">🔒 Parameters locked</span>
+          <span style="flex:1">Results reflect the inputs below. Save a report and/or clear the results to change the design and re-run.</span>
+          <button class="btn btn-outline btn-sm" onclick="generateReport()" style="white-space:nowrap">Save Report</button>
+          <button class="btn btn-primary btn-sm" onclick="clearResults()" style="white-space:nowrap">Clear Results</button>
+        </div>
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="tab-design">Design Summary</button>
+          <button class="tab-btn" data-tab="tab-soakperf">Results Dashboard</button>
+          <button class="tab-btn" data-tab="tab-clogging" id="btn-tab-clogging" style="display:none">Maintenance Planning</button>
+          <button class="tab-btn" data-tab="tab-runoff">Runoff Table</button>
+          <button class="tab-btn" data-tab="tab-hydro">Cumulative Volume</button>
+          <button class="btn btn-outline btn-sm" id="btn-report" onclick="generateReport()" style="margin-left: auto;">Generate Report</button>
+        </div>
+
+        <!-- Design tab -->
+        <div class="tab-panel active" id="tab-design">
+          <div id="design-summary"></div>
+
+          <div class="results-table-container" style="margin-top: 1.5rem;">
+             <h4 style="font-size: 0.9rem; color: var(--primary); margin-bottom: 0.5rem;">Results Summary</h4>
+             <div id="median-depth-chart-container" style="height: 300px; width: 100%; position: relative; margin-bottom: 1.5rem;">
+                <canvas id="median-depth-chart"></canvas>
+             </div>
+             <table class="data-table" id="table-results-summary">
+               <thead>
+                 <tr>
+                   <th>Critical Event</th>
+                   <th>Duration & Rank</th>
+                   <th>Peak Vol (m³)</th>
+                   <th>Peak Depth (m)</th>
+                   <th>Peak Mound (m)</th>
+                   <th>Exceeds Allowable?</th>
+                   <th>Spilled Vol (m³)</th>
+                 </tr>
+               </thead>
+               <tbody>
+                 <!-- Populated by JS -->
+               </tbody>
+             </table>
+          </div>
+        </div>
+
+        <!-- Results Dashboard (formerly soakperf) -->
+        <div class="tab-panel" id="tab-soakperf">
+          <div class="dashboard-controls" style="margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center;">
+             <label style="font-weight: 600; font-size: 0.85rem;">Select Duration:</label>
+             <select id="dashboard-duration-select" onchange="renderResultsDashboard()" style="padding: 0.3rem; border-radius: 4px; border: 1px solid #ccc;"></select>
+             <button class="btn btn-primary btn-sm" onclick="showCriticalDuration()" style="margin-left:auto">Critical Depth</button>
+             <button class="btn btn-outline btn-sm" onclick="showCriticalDrawdown()">Critical Drawdown</button>
+             <button class="btn btn-outline btn-sm" onclick="openMaintenancePlanning()" id="btn-run-clogging" style="display:none; border-color: #f59e0b; color: #d97706;">Maintenance Planning →</button>
+          </div>
+          <div id="spill-warning" style="display:none; background-color: #fef2f2; color: #991b1b; padding: 0.5rem 1rem; border-left: 4px solid #ef4444; margin-bottom: 1rem; border-radius: 4px; font-weight: 600;">
+             <!-- Warning text injected here -->
+          </div>
+          <div id="dashboard-chart-container" style="height: 400px; width: 100%; position: relative; margin-bottom: 2rem;">
+             <canvas id="dashboard-chart"></canvas>
+          </div>
+          <div id="dashboard-secondary-chart-container" style="height: 300px; width: 100%; position: relative;">
+             <canvas id="dashboard-secondary-chart"></canvas>
+          </div>
+          <div id="model-selector" style="display:none;margin:.4rem 0 .6rem;"></div>
+          <div id="soakperf-charts" style="display:none"></div>
+          <div id="model-comparison" style="display:none;margin-top:.7rem;"></div>
+        </div>
+
+        <!-- Maintenance Planning (multi-year clogging) tab -->
+        <div class="tab-panel" id="tab-clogging">
+          <div id="clogging-results" style="padding: 1rem;">
+             <h4 style="color: var(--primary);">Maintenance Planning — Clogging Impact Timeline</h4>
+             <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 0.5rem;">Full multi-year analysis with groundwater mounding — for maintenance scheduling.</p>
+             <p style="font-size: 0.8rem; color: #92400e; margin-bottom: 1rem; background:#fffbeb; border:1px solid #fcd34d; padding:.5rem .7rem; border-radius:6px;"><strong>Required, not optional.</strong> The basin must be designed for its end-of-life (clogged) performance. Agree the clogging parameters (K, thickness) and timeline (years) with the asset owner before running.</p>
+
+             <div class="clogging-controls" style="display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                <div class="field" style="margin: 0; flex: 1;">
+                   <label>Analysis Years</label>
+                   <input type="number" id="inp-clog-years" value="10" min="1" max="50">
+                </div>
+                <div class="field" style="margin: 0; flex: 1;" title="Typical clogged layer hydraulic conductivity between 0.1 to 0.3 m/day.">
+                   <label>Final Clogged K (m/day)</label>
+                   <input type="number" id="inp-clog-k" value="0.1" step="0.01" min="0.001">
+                </div>
+                <div class="field" style="margin: 0; flex: 1;" title="Typical clogged layer thickness between .05 m and .25m">
+                   <label>Final Clogged Thickness (m)</label>
+                   <input type="number" id="inp-clog-l" value="0.25" step="0.01" min="0.01">
+                </div>
+                <button class="btn btn-primary" onclick="runCloggingAnalysis()" style="white-space: nowrap;">Run Analysis</button>
+             </div>
+
+             <div id="clogging-loading" style="display:none; text-align:center; padding: 2rem; color: var(--primary); font-weight: 600;">
+                 <div class="spinner" style="margin: 0 auto 1rem auto;"></div>
+                 <div id="clogging-loading-text">Running timeline simulation...</div>
+                 <div style="background:#e2e8f0;border-radius:6px;height:10px;margin:1rem auto;overflow:hidden;max-width:400px;">
+                     <div id="clogging-progress-bar" style="background:linear-gradient(90deg,#2563eb,#3b82f6);height:10px;border-radius:6px;width:0%;transition:width .4s ease"></div>
+                 </div>
+             </div>
+
+             <div id="clogging-chart-container" style="height: 400px; width: 100%; position: relative;">
+                <canvas id="clogging-chart"></canvas>
+             </div>
+
+             <div id="clogging-table-container" style="display:none; margin-top: 2rem;">
+                <h4 style="color: var(--primary);">Clogging Analysis Results</h4>
+                <div style="overflow-x:auto">
+                    <table class="data-table" id="clogging-table">
+                    <thead>
+                        <tr>
+                            <th>Year</th>
+                            <th>Clogged K (m/day)</th>
+                            <th>Clogged Thickness (m)</th>
+                            <th>Peak Depth (m)</th>
+                            <th>Drain Time (hours)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clogging-table-body"></tbody>
+                    </table>
+                </div>
+             </div>
+
+             <div id="clogging-dashboard" style="display:none; margin-top: 2rem;">
+                 <h4 style="color: var(--primary); margin-bottom: 1rem;" id="clogging-dash-title">Selected Year Dashboard</h4>
+                 <div class="dashboard-grid">
+                    <div class="chart-card"><div class="chart-wrapper"><canvas id="clog-chart-stage"></canvas></div></div>
+                    <div class="chart-card"><div class="chart-wrapper"><canvas id="clog-chart-mound"></canvas></div></div>
+                    <div class="chart-card"><div class="chart-wrapper"><canvas id="clog-chart-infil"></canvas></div></div>
+                    <div class="chart-card"><div class="chart-wrapper"><canvas id="clog-chart-cuminfil"></canvas></div></div>
+                 </div>
+             </div>
+          </div>
+        </div>
+
+        <!-- Runoff table tab -->
+        <div class="tab-panel" id="tab-runoff">
+          <div style="overflow-x:auto">
+            <table class="data-table" id="runoff-table">
+              <thead>
+                <tr>
+                  <th>AEP</th>
+                  <th>Duration (min)</th>
+                  <th>Temporal Pattern</th>
+                  <th>Peak Flow (m³/s)</th>
+                  <th>Volume (m³)</th>
+                  <th>Time to Peak (min)</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Hyetograph tab -->
+        <div class="tab-panel" id="tab-hyeto">
+          <div id="hyeto-charts"></div>
+        </div>
+
+        <!-- Hydrograph tab -->
+        <div class="tab-panel" id="tab-hydro">
+          <div id="hydro-charts"></div>
+        </div>
+      </div>
+
+      <div id="lga-warning-box" style="display: none; padding: 0 1rem 1rem;"></div>
+    </div>
+
+    <footer>
+      &copy; 2026 <a href="https://innealta.com.au" target="_blank">Innealta Engineering</a> — SoakSIM is provided free of charge.
+      Results should be verified by a qualified engineer.
+    </footer>
+  </div>
+</div>
+
+<!-- ── Loading overlay ───────────────────────────────────────────────── -->
+<div class="loading-overlay" id="loading">
+  <div class="spinner-card">
+    <div class="spinner"></div>
+    <p style="font-weight:600;color:var(--text)">Running simulation…</p>
+    <p style="font-size:.8rem;color:var(--muted)">Fetching ARR data &amp; computing runoff</p>
+  </div>
+</div>
+
+<script src="/static/app.js?v=28"></script>
+</body>
 </html>

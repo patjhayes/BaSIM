@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GAH-3D &mdash; Technical Reference</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <!-- KaTeX for maths rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]});"></script>
+  <style>
+    :root {
+      --primary: #1a6b4f;
+      --primary-light: #28a77d;
+      --text: #1e293b;
+      --muted: #64748b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.7;
+      font-size: 0.92rem;
+    }
+    header {
+      background: linear-gradient(135deg, #0f4c35 0%, var(--primary) 100%);
+      color: #fff;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header .brand { display: flex; align-items: center; gap: .6rem; }
+    header h1 { font-size: 1.3rem; font-weight: 800; }
+    header span { font-size: .75rem; opacity: .8; }
+    header nav a { color: #a7f3d0; text-decoration: none; font-size: .82rem; font-weight: 600; }
+    header nav a:hover { color: #fff; }
+
+    .container { max-width: 920px; margin: 2rem auto; padding: 0 1.5rem 4rem; }
+    h2 {
+      color: var(--primary);
+      font-size: 1.4rem;
+      margin: 2.5rem 0 0.8rem;
+      padding-bottom: .3rem;
+      border-bottom: 2px solid var(--primary-light);
+    }
+    h3 { color: var(--primary); font-size: 1.1rem; margin: 1.8rem 0 0.5rem; }
+    h4 { font-size: 0.95rem; margin: 1.2rem 0 0.4rem; color: #334155; }
+    p, li { margin-bottom: .5rem; }
+    ul, ol { padding-left: 1.5rem; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .85rem; }
+    th, td { border: 1px solid var(--border); padding: .45rem .7rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; font-weight: 600; color: var(--primary); }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.4rem;
+      margin: 1rem 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .note {
+      background: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      padding: .8rem 1rem;
+      margin: 1rem 0;
+      border-radius: 0 8px 8px 0;
+      font-size: .85rem;
+    }
+    .note strong { color: #1d4ed8; }
+    .warn {
+      background: #fef3c7;
+      border-left: 4px solid #f59e0b;
+      padding: .8rem 1rem;
+      margin: 1rem 0;
+      border-radius: 0 8px 8px 0;
+      font-size: .85rem;
+    }
+    .warn strong { color: #b45309; }
+    code { background: #f1f5f9; padding: .15rem .35rem; border-radius: 4px; font-size: .82rem; }
+    .toc {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.2rem 1.5rem;
+      margin: 1.5rem 0;
+    }
+    .toc h3 { margin-top: 0; font-size: 1rem; }
+    .toc ol { margin: .5rem 0 0; }
+    .toc a { color: var(--primary); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    .flowchart {
+      display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+      margin: 1rem 0; font-size: .82rem;
+    }
+    .flowchart .step { background: var(--primary); color: #fff; padding: .4rem .8rem; border-radius: 6px; font-weight: 600; }
+    .flowchart .arrow { color: var(--muted); font-size: 1.2rem; }
+    .katex-display { margin: 1rem 0; overflow-x: auto; overflow-y: hidden; }
+    .param { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:.6rem .9rem; margin:.6rem 0; }
+    .param code { background:#dcfce7; }
+    @media (max-width: 700px) {
+      .container { padding: 0 .8rem 3rem; }
+      h2 { font-size: 1.2rem; }
+      table { display: block; max-width: 100%; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/></svg>
+    <div>
+      <h1>GAH-3D &mdash; Technical Reference</h1>
+      <span>Green-Ampt-Hantush 3D Basin Design &mdash; Engineer's Guide</span>
+    </div>
+  </div>
+  <nav>
+    <a href="/">&larr; Back to App</a>
+  </nav>
+</header>
+
+<div class="container">
+
+<!-- =================================================================== -->
+<div class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#overview">Overview &amp; How to Use This Tool</a></li>
+    <li><a href="#workflow">The Design Workflow</a></li>
+    <li><a href="#site">Site Location</a></li>
+    <li><a href="#catchments">Catchments &amp; ILSAX Runoff</a></li>
+    <li><a href="#storm">Storm Settings (AEP &amp; Durations)</a></li>
+    <li><a href="#rainfall">Design Rainfall &amp; Temporal Patterns (ARR / BoM)</a></li>
+    <li><a href="#basin">Basin Geometry</a></li>
+    <li><a href="#hydraulic">Hydraulic Conductivity (K<sub>v</sub>, K<sub>h</sub>) &amp; Soil Moderation</a></li>
+    <li><a href="#soil-params">Green-Ampt Soil Parameters (&Delta;&theta;, &psi;, S<sub>y</sub>)</a></li>
+    <li><a href="#groundwater">Groundwater &amp; Aquifer Levels</a></li>
+    <li><a href="#gah3d">The GAH-3D Routing Engine (Theory)</a></li>
+    <li><a href="#pooling">Overtopping &amp; Pooling</a></li>
+    <li><a href="#structures">Hydraulic Outflow Structures</a></li>
+    <li><a href="#climate">Climate Change Factors</a></li>
+    <li><a href="#clogging">Maintenance Planning (Clogging Degradation)</a></li>
+    <li><a href="#selection">ARR Probability-Neutral Pattern Selection</a></li>
+    <li><a href="#outputs">Interpreting the Outputs &amp; Reporting</a></li>
+    <li><a href="#references">References</a></li>
+  </ol>
+</div>
+
+<!-- =================================================================== -->
+<h2 id="overview">1. Overview &amp; How to Use This Tool</h2>
+
+<p>GAH-3D is an infiltration-basin design tool for Australian urban drainage. You enter your site location, the contributing catchments, the basin geometry and the soil/hydraulic parameters you have measured on site, and the tool:</p>
+
+<ol>
+  <li>Fetches design rainfall depths (BoM IFD) and ARR 2019 temporal patterns for your site;</li>
+  <li>Generates rainfall hyetographs and converts them to runoff hydrographs using the ILSAX model;</li>
+  <li>Routes every runoff hydrograph through your basin using the <strong>Green-Ampt-Hantush 3D (GAH-3D)</strong> coupled infiltration-and-groundwater-mounding engine; and</li>
+  <li>Selects the critical design event using the ARR probability-neutral method and reports peak depth, storage, drain time, groundwater mounding and overtopping.</li>
+</ol>
+
+<div class="flowchart">
+  <span class="step">Site coordinate</span><span class="arrow">&rarr;</span>
+  <span class="step">BoM IFD + ARR patterns</span><span class="arrow">&rarr;</span>
+  <span class="step">Hyetograph</span><span class="arrow">&rarr;</span>
+  <span class="step">ILSAX runoff</span><span class="arrow">&rarr;</span>
+  <span class="step">GAH-3D basin routing</span><span class="arrow">&rarr;</span>
+  <span class="step">Critical event &amp; report</span>
+</div>
+
+<div class="warn">
+  <strong>What this tool is, and is not.</strong> GAH-3D is a design-aid that couples physically-based infiltration (Green-Ampt) with analytical groundwater mounding (Hantush). It is appropriate for preliminary and detailed sizing of infiltration basins. It is <strong>not</strong> a full 2D/3D variably-saturated groundwater model (e.g. VS2DI, HYDRUS, FEFLOW). Where shallow or perched water tables, layered soils, or complex geology are present, the simplified mounding assumptions should be checked against site-specific data or a higher-fidelity model.
+</div>
+
+<!-- =================================================================== -->
+<h2 id="workflow">2. The Design Workflow</h2>
+
+<p>As an engineer using the tool, a typical workflow is:</p>
+<ol>
+  <li><strong>Locate the site</strong> on the map (or type coordinates). The coordinate drives the BoM IFD and ARR data.</li>
+  <li><strong>Define each catchment</strong> draining to the basin: area, slope, and the paved / supplementary / grassed surface fractions, plus the ILSAX flow-path parameters (length, slope, roughness, depression storage).</li>
+  <li><strong>Choose the AEP(s) and storm durations</strong> to analyse. The design AEP defaults to the rarest selected.</li>
+  <li><strong>Enter the basin geometry</strong> (base length, width, side slopes, maximum depth).</li>
+  <li><strong>Enter the hydraulic conductivity</strong> from your field test (vertical K<sub>v</sub>, and optionally horizontal K<sub>h</sub>), plus the soil moderation factor U.</li>
+  <li><strong>Enter the Green-Ampt / groundwater parameters</strong> &mdash; either pick a USDA soil-texture class to auto-fill the defaults, or specify custom values (initial moisture deficit &Delta;&theta;, capillary suction &psi;, specific yield S<sub>y</sub>), and the groundwater/aquifer levels in m AHD.</li>
+  <li><strong>(Optional) Apply a climate-change scenario</strong> to uplift the design rainfall depths.</li>
+  <li><strong>Run the analysis.</strong> Review the critical-event summary, the depth/mound/infiltration time-series, and any overtopping warnings.</li>
+  <li><strong>Run Maintenance Planning.</strong> This is <strong>not optional</strong> &mdash; the basin must be designed for its end-of-life (clogged) performance. Run the multi-year clogging analysis (with mounding) to confirm the basin still drains within the design time over the asset life, and to set the maintenance/rehabilitation schedule. Agree the clogging parameters and timeline with the asset owner (see &sect;15).</li>
+  <li><strong>Save or clear.</strong> After a run the design inputs are <strong>locked</strong> so the on-screen results always match the inputs that produced them. Generate the PDF report to keep a record (this requires a completed Maintenance Planning run &mdash; see &sect;17), then press <strong>Clear Results</strong> to unlock the inputs and iterate.</li>
+</ol>
+
+<p>Each parameter is explained in the sections below, together with the theory behind it and guidance on what value to enter.</p>
+
+<!-- =================================================================== -->
+<h2 id="site">3. Site Location</h2>
+
+<div class="param"><strong>Input:</strong> <code>Latitude</code>, <code>Longitude</code> (Australian extents: &minus;44 to &minus;10&deg; lat, 112 to 154&deg; lon).</div>
+
+<p>The site coordinate is the single most important input because it determines <em>all</em> the rainfall data. GAH-3D uses it to:</p>
+<ul>
+  <li>Retrieve <strong>BoM revised IFD (2016)</strong> design rainfall depths for every duration and AEP; and</li>
+  <li>Retrieve the correct <strong>ARR 2019 temporal patterns</strong> for the site's region.</li>
+</ul>
+<p>Click the map to drop a marker, or drag it; the latitude/longitude fields update automatically. For design work, use the centroid of the contributing catchments (rainfall is assumed spatially uniform over the catchment).</p>
+
+<div class="note">
+  <strong>Live vs offline data.</strong> With live data on, GAH-3D scrapes the ARR Data Hub and BoM IFD system and caches responses under <code>%USERPROFILE%\.soaksim\cache</code>. If the network is unavailable it falls back to the bundled sample dataset. The BoM IFD endpoint blocks automated scraping &mdash; for production work, export the IFD JSON from the BoM tool and supply it via the <code>SOAKSIM_BOM_IFD_JSON</code> environment variable.
+</div>
+
+<!-- =================================================================== -->
+<h2 id="catchments">4. Catchments &amp; ILSAX Runoff</h2>
+
+<p>Each catchment represents an area draining to the basin. GAH-3D converts rainfall to runoff with the <strong>ILSAX model</strong>. ILSAX splits every catchment into three surface types that are modelled independently and then summed:</p>
+
+<table>
+  <tr><th>Surface</th><th>Loss model</th><th>Typical examples</th></tr>
+  <tr><td><strong>Paved</strong> (directly-connected impervious, DCIA)</td><td>Depression storage only</td><td>Roofs, sealed car parks draining straight to the basin</td></tr>
+  <tr><td><strong>Supplementary</strong> (indirectly-connected impervious)</td><td>Depression storage only</td><td>Paved areas that drain across grass before reaching the basin</td></tr>
+  <tr><td><strong>Grassed</strong> (pervious)</td><td>Horton infiltration + depression storage</td><td>Lawns, gardens, verges</td></tr>
+</table>
+
+<h3>4.1 Catchment area and slope</h3>
+<div class="param"><strong>Inputs:</strong> <code>area_ha</code>, <code>slope</code>.</div>
+<p>Area is the total catchment area in hectares. Slope is the general catchment grade (m/m). Both feed the time-area routing.</p>
+
+<h3>4.2 Surface fractions</h3>
+<div class="param"><strong>Inputs:</strong> <code>paved_fraction</code>, <code>supplementary_fraction</code>, <code>grassed_fraction</code> (must sum to 1.0).</div>
+<p>The three fractions allocate the total area to the three surface types. For a roof-only catchment use paved = 1.0.</p>
+
+<h3>4.3 Time of entry (kinematic-wave equation)</h3>
+<p>For each surface, the time of entry is computed from the kinematic-wave equation (Ragan &amp; Duru, 1972):</p>
+$$t_e = 6.94\,\frac{(L\,n^*)^{0.6}}{I^{0.4}\,S^{0.3}} + t_{\text{add}}$$
+<div class="param"><strong>Inputs per surface:</strong> flow-path length $L$, flow-path slope $S$ (percent), retardance $n^*$, additional constant time $t_{\text{add}}$.</div>
+<ul>
+  <li>$L$ = overland flow-path length (m)</li>
+  <li>$n^*$ = retardance coefficient (similar to Manning's $n$): 0.011 concrete/asphalt, 0.013 bare soil, 0.25 lawn</li>
+  <li>$I$ = mean rainfall intensity over the storm (mm/hr)</li>
+  <li>$S$ = slope (converted from percent to m/m)</li>
+  <li>$t_{\text{add}}$ = any constant additional travel time (minutes), e.g. for property drainage</li>
+</ul>
+
+<h3>4.4 Depression storage (initial loss)</h3>
+<div class="param"><strong>Inputs per surface:</strong> <code>paved_depression_storage_mm</code> (typ. 1 mm), <code>supplementary_...</code> (typ. 1 mm), <code>grassed_...</code> (typ. 5 mm).</div>
+<p>Depression storage is an initial-loss bucket that must fill before any runoff occurs from that surface.</p>
+
+<h3>4.5 Horton infiltration (grassed surface only)</h3>
+<p>The grassed surface infiltrates according to the Horton capacity curve:</p>
+$$f(t) = f_c + (f_0 - f_c)\,e^{-k\,t}$$
+<div class="param"><strong>Inputs:</strong> <code>soil_type</code> (1=A sandy &hellip; 4=D clay), <code>amc</code> (antecedent moisture condition 1=dry &hellip; 4=saturated).</div>
+<p>The soil type selects $f_0$ (initial rate) and $f_c$ (final rate) from the standard Horton infiltration tables; the AMC adjusts the starting point on the curve. GAH-3D evaluates Horton with Watson's non-iterative method (Watson, 1981) for numerical stability.</p>
+<table>
+  <tr><th>Soil type</th><th>$f_0$ (mm/hr)</th><th>$f_c$ (mm/hr)</th></tr>
+  <tr><td>A (Sandy)</td><td>250</td><td>25</td></tr>
+  <tr><td>B (Sandy Loam)</td><td>200</td><td>13</td></tr>
+  <tr><td>C (Clay Loam)</td><td>125</td><td>6</td></tr>
+  <tr><td>D (Heavy Clay)</td><td>75</td><td>3</td></tr>
+</table>
+<p>The decay constant $k = 2.0$ hr$^{-1}$ for all soil types.</p>
+
+<h3>4.6 Time-area routing</h3>
+<p>Excess rainfall from each surface is convolved with a linear time-area histogram to produce a discharge hydrograph:</p>
+$$Q_n = \frac{A}{360}\sum_i h_i\,I_{n-i}$$
+<p>where $A$ is the contributing area (ha), $h_i$ the fractional area ordinates, and $I$ the excess intensity (mm/hr); the factor 360 converts ha&middot;mm/hr to m&sup3;/s. The three surface hydrographs are summed to give the total catchment hydrograph routed to the basin.</p>
+
+<!-- =================================================================== -->
+<h2 id="storm">5. Storm Settings (AEP &amp; Durations)</h2>
+
+<h3>5.1 Annual Exceedance Probability (AEP)</h3>
+<div class="param"><strong>Input:</strong> <code>aep_percentages</code> (multi-select: 63.2%, 50%, 20%, 10%, 5%, 2%, 1%).</div>
+<p>The AEP is the probability of a given rainfall depth being exceeded in any one year. Select all the events you want to analyse. The <strong>design AEP</strong> defaults to the rarest (smallest percentage) selected &mdash; this is the event the basin is sized to contain.</p>
+<table>
+  <tr><th>AEP</th><th>ARI (approx.)</th><th>Common use</th></tr>
+  <tr><td>63.2% (EY 1)</td><td>1 year</td><td>Minor / frequent event</td></tr>
+  <tr><td>10%</td><td>10 year</td><td>Typical minor-street drainage</td></tr>
+  <tr><td>5%</td><td>20 year</td><td>Common basin design event</td></tr>
+  <tr><td>1%</td><td>100 year</td><td>Major / floor-level check</td></tr>
+</table>
+
+<h3>5.2 Storm durations</h3>
+<div class="param"><strong>Input:</strong> <code>durations_minutes</code> (checkbox grid: 1 min &hellip; 168 hr).</div>
+<p>GAH-3D routes <em>every</em> selected duration so the <strong>critical duration</strong> (the one producing the greatest peak basin depth) is found automatically. For basin sizing, select a range that brackets the catchment response &mdash; typically 30 min to 6 hr for urban catchments. The computational timestep adapts to the duration (finer for short storms).</p>
+
+<!-- =================================================================== -->
+<h2 id="rainfall">6. Design Rainfall &amp; Temporal Patterns (ARR / BoM)</h2>
+
+<h3>6.1 BoM IFD design depths</h3>
+<p>For the site coordinate, GAH-3D retrieves the design rainfall depth $P$ (mm) for every selected (AEP, duration) pair from the Bureau of Meteorology <strong>Revised IFD Design Rainfall Data System (2016)</strong>, consistent with ARR 2019.</p>
+
+<h3>6.2 ARR 2019 temporal patterns</h3>
+<p>ARR 2019 provides an <strong>ensemble of 10 temporal patterns</strong> per (AEP, duration). Each pattern is a cumulative-fraction array $\{F_1,\ldots,F_n\}$ with $F_n=1.0$, representing one historically-observed way rainfall can be distributed across the storm. GAH-3D routes <em>all 10</em> patterns to avoid bias toward any single distribution.</p>
+
+<h3>6.3 Hyetograph generation</h3>
+<p>Each pattern is combined with the BoM depth to form a hyetograph:</p>
+<ol>
+  <li>Cumulative depths: $P_i^{\text{cum}} = F_i \times P_{\text{total}}$</li>
+  <li>Interpolate onto the computational timestep $\Delta t$</li>
+  <li>Incremental depths: $p_j = P_j^{\text{cum}} - P_{j-1}^{\text{cum}}$</li>
+</ol>
+
+<!-- =================================================================== -->
+<h2 id="basin">7. Basin Geometry</h2>
+
+<div class="param"><strong>Inputs:</strong> <code>basin_base_length_m</code>, <code>basin_base_width_m</code>, <code>basin_side_slope_ratio</code> (H:V), <code>basin_max_depth_m</code>.</div>
+
+<p>The basin is a trapezoidal excavation with battered sides. Let $L_b$, $W_b$ be the base length and width, $m$ the side-slope ratio ($1{:}m$, e.g. 4 for 4H:1V), and $D_b$ the maximum depth. At depth $z$ the plan dimensions grow with the batters:</p>
+$$L(z) = L_b + 2mz, \qquad W(z) = W_b + 2mz$$
+<p>The plan area and storage volume up to depth $z$ are:</p>
+$$A(z) = (L_b + 2mz)(W_b + 2mz)$$
+$$V(z) = L_bW_bz + m(L_b+W_b)z^2 + \tfrac{4}{3}m^2 z^3$$
+<p>The full basin capacity is $V(D_b)$. During routing, the water depth is recovered by numerically inverting $V(z)$.</p>
+
+<div class="param"><strong>Input:</strong> <code>basin_side_infil_enabled</code> (side-wall infiltration on/off).</div>
+<p>When side infiltration is enabled, the active infiltration area includes the sloping batter faces wetted by the current depth; otherwise only the basin floor infiltrates.</p>
+
+<!-- =================================================================== -->
+<h2 id="hydraulic">8. Hydraulic Conductivity (K<sub>v</sub>, K<sub>h</sub>) &amp; Soil Moderation</h2>
+
+<h3>8.1 Vertical hydraulic conductivity K<sub>v</sub></h3>
+<div class="param"><strong>Input:</strong> <code>vertical_k_mm_per_hr</code> (entered in m/day in the UI, converted internally).</div>
+<p>K<sub>v</sub> governs the vertical, gravity-and-capillary-driven flux of the Green-Ampt wetting front beneath the basin floor. <strong>Enter the raw, site-specific field-measured value</strong> from shallow, unsaturated-zone testing &mdash; ideally a double-ring infiltrometer or shallow constant-head permeameter. If the water table is too shallow for a field test, use an undisturbed core with a laboratory constant-head test. For imported fill, K<sub>v</sub> must represent the compacted fill as specified in your compaction design.</p>
+
+<h3>8.2 Horizontal hydraulic conductivity K<sub>h</sub> (optional)</h3>
+<div class="param"><strong>Input:</strong> <code>horizontal_k_mm_per_hr</code> (leave blank for K<sub>h</sub> = K<sub>v</sub>).</div>
+<p>K<sub>h</sub> governs the lateral transmissivity $T = K_h \cdot b$ of the aquifer that dissipates the groundwater mound. Use saturated-zone testing &mdash; slug tests, pump tests, or deep borehole permeability below the water table. <strong>If you leave it blank, GAH-3D assumes isotropy (K<sub>h</sub> = K<sub>v</sub>), which is conservative</strong> because it limits lateral dissipation and produces a larger mound.</p>
+
+<div class="warn">
+  <strong>Avoid double-penalisation.</strong> Do <em>not</em> enter a K value that was already damped by shallow-groundwater interaction during the field test. A test run too close to the water table measures a system response, not the true soil property. Using such a value double-counts the groundwater effect &mdash; once in the Green-Ampt term and again in the Hantush mound &mdash; and yields an over-sized, inefficient basin.
+</div>
+
+<h3>8.3 Soil moderation factor U</h3>
+<div class="param"><strong>Input:</strong> <code>soil_moderation_factor</code> (Sand 0.5, Sandy Clay 1.0, Medium/Heavy Clay 2.0).</div>
+<p>Soils are heterogeneous: point-scale field tests mis-represent the areal conductivity &mdash; they tend to <em>over</em>estimate sand and <em>under</em>estimate clay. The Soil Moderation Factor (Engineers Australia, 2006) corrects for this. GAH-3D applies it to the field-measured K internally:</p>
+$$k_{\text{adj}} = k_{\text{field}} \cdot U$$
+<table>
+  <tr><th>Soil</th><th>U</th><th>Rationale</th></tr>
+  <tr><td>Sand</td><td>0.5</td><td>Field tests overestimate areal K &rarr; halve the rate</td></tr>
+  <tr><td>Sandy Clay</td><td>1.0</td><td>No correction</td></tr>
+  <tr><td>Medium / Heavy Clay</td><td>2.0</td><td>Field tests underestimate areal K &rarr; double the rate</td></tr>
+</table>
+<div class="note"><strong>Exception:</strong> If you are using a calculated long-term / lifespan conductivity rather than a raw field test, set U = 1.0.</div>
+
+<!-- =================================================================== -->
+<h2 id="soil-params">9. Green-Ampt Soil Parameters (&Delta;&theta;, &psi;, S<sub>y</sub>)</h2>
+
+<p>These three parameters drive the unsaturated-zone and aquifer behaviour of the GAH-3D engine. You can either pick a <strong>USDA soil-texture class</strong> (Sand, Loamy Sand, &hellip; Clay) to auto-fill the defaults from the Carsel &amp; Parrish (1988) / Van Genuchten (1980) tables, or switch to <strong>custom values</strong> and enter your own.</p>
+
+<h3>9.1 Initial moisture deficit &Delta;&theta;</h3>
+<div class="param"><strong>Input:</strong> <code>initial_moisture_deficit</code> (0&ndash;0.5; Sand &asymp; 0.20, Clay &asymp; 0.12).</div>
+<p>&Delta;&theta; is the fillable porosity of the unsaturated column above the water table &mdash; the difference between saturated and initial water content. It controls how fast the Green-Ampt wetting front descends: a larger deficit means the same infiltrated volume advances the front more slowly ($Z_f = \int f/\Delta\theta\, dt$). It is distinct from the specific yield (which governs the saturated mound). If you have a measured initial moisture content, use &Delta;&theta; = &theta;<sub>s</sub> &minus; &theta;<sub>initial</sub>.</p>
+
+<h3>9.2 Capillary suction head &psi;</h3>
+<div class="param"><strong>Input:</strong> <code>capillary_suction_head_m</code> (Sand &asymp; 0.10 m, Clay &asymp; 0.28 m).</div>
+<p>&psi; is the effective capillary drive ahead of the wetting front. In the Green-Ampt equation it adds to the ponding depth to pull water into dry soil, so the early-time infiltration rate exceeds the saturated conductivity. Coarser soils have smaller suction heads; finer soils larger.</p>
+
+<h3>9.3 Specific yield S<sub>y</sub></h3>
+<div class="param"><strong>Input:</strong> <code>specific_yield</code> (Sand &asymp; 0.27, Clay &asymp; 0.03).</div>
+<p>S<sub>y</sub> is the drainable porosity of the aquifer &mdash; the volume of water released per unit area per unit drop of the water table. It governs the Hantush groundwater mound: a <em>smaller</em> S<sub>y</sub> means a given infiltrated volume raises the mound more, so shallow-water-table sites with low-S<sub>y</sub> soils see faster mounding. The soil-texture defaults come from the Carsel &amp; Parrish (1988) / Johnson (1967) tables.</p>
+
+<!-- =================================================================== -->
+<h2 id="groundwater">10. Groundwater &amp; Aquifer Levels</h2>
+
+<div class="param"><strong>Inputs:</strong> <code>surface_level_m_ahd</code> (basin invert), <code>design_gwl_m_ahd</code> (design groundwater level), <code>base_aquifer_level_m_ahd</code> (impermeable base).</div>
+<p>These three levels, in m AHD, define the unsaturated column and the saturated aquifer beneath the basin:</p>
+<ul>
+  <li><strong>Depth to groundwater</strong> $D_{gw} = \text{surface} - \text{design GWL}$ &mdash; the initial unsaturated thickness the wetting front must cross.</li>
+  <li><strong>Aquifer saturated thickness</strong> $b = \text{design GWL} - \text{base aquifer}$ &mdash; feeds the transmissivity $T = K_h \cdot b$.</li>
+</ul>
+<p>Enter the <strong>design (seasonally-high) groundwater level</strong>, not the level on the day you tested. The groundwater mound rises from this initial level during the storm and is capped at the ground surface.</p>
+
+<!-- =================================================================== -->
+<h2 id="gah3d">11. The GAH-3D Routing Engine (Theory)</h2>
+
+<p>The Green-Ampt-Hantush 3D (GAH-3D) engine couples two classical solutions at each timestep: the <strong>descending unsaturated wetting front</strong> (Green-Ampt) and the <strong>ascending saturated groundwater mound</strong> beneath the rectangular basin footprint (Hantush, 1967).</p>
+
+<h3>11.1 Green-Ampt descending front</h3>
+<p>The wetting-front depth $Z_f$ is advanced with the moisture deficit &Delta;&theta; as the Green-Ampt porosity. The potential flux is:</p>
+$$f_{GA} = k_{\text{adj}}\left(1 + \frac{\psi\,\Delta\theta + h}{F}\right) \;\geq\; k_{\text{adj}}$$
+<p>where $h$ is the current ponding depth and $F = Z_f\,\Delta\theta$ the cumulative infiltrated depth. GAH-3D solves the implicit Green-Ampt quadratic for numerical stability at $Z_f \to 0$. Note $f_{GA} \geq k_{\text{adj}}$ always &mdash; capillary drive adds to gravity.</p>
+
+<h3>11.2 Saturated connection (front reaches the water table)</h3>
+<p>Once the cumulative infiltration has filled the unsaturated column ($z_{wf} \ge D_{gw}$), the wetting front meets the water table and a <strong>saturated connection</strong> forms between the ponded surface and the aquifer. The flux is then the Darcy gradient down the saturated column:</p>
+$$f_{\text{sat}} = k_{\text{adj}}\,\frac{D_{gw} + h - H_m}{D_{gw}}$$
+<p>As the mound $H_m$ rises toward the basin the driving gradient shrinks and the flux falls &mdash; this is the physical mechanism by which mounding throttles infiltration on shallow-water-table sites. (This explicit saturated gradient replaces the earlier logistic &ldquo;collision-smoothing&rdquo; damper; it matches the validated phase-4 GAH-2D formulation.)</p>
+
+<h3>11.3 Clogged-layer resistance (optional)</h3>
+<p>If a clogged layer is enabled, infiltration is additionally capped by Darcy flow through the low-permeability skin of conductivity $K_c$ and thickness $z_c$ on the basin floor:</p>
+$$f_{\text{clogged}} = K_c\,\frac{h + z_c}{z_c}, \qquad f_{\text{actual}} = \min(f_{\text{actual}},\,f_{\text{clogged}})$$
+<p>When side-wall infiltration is enabled the clogged cap is evaluated over the full wetted area (floor + batter faces + corners), so clogging is applied to the true 3D infiltrating surface rather than as a blanket reduction factor.</p>
+
+<h3>11.4 Vadose breakthrough &amp; mass-conservative recharge</h3>
+<p>The unsaturated column has a <strong>fixed storage capacity</strong> $V_{\text{vadose}} = D_{gw}\,\Delta\theta$. Each timestep, infiltration first fills the remaining vadose capacity; only the <em>overflow</em> becomes recharge $R$ to the water table. After breakthrough, all infiltration becomes recharge. This split conserves mass exactly &mdash; cumulative infiltration equals the vadose fill plus cumulative recharge, $F = V_{\text{filled}} + \sum R\,\Delta t$, to machine precision.</p>
+
+<h3>11.5 Hantush 3D mound &amp; the mound throttle</h3>
+<p>The recharge $R(t)$ drives a Hantush (1967) rectangular-footprint mound at the basin centre. The mound height is the linear superposition of the recharge history, evaluated with the error-function kernel for the basin length $L$ and width $W$:</p>
+$$H_m(t) = \frac{\Delta t}{S_y}\sum_j R_j\;\text{erf}\!\left(\frac{L/2}{\sqrt{4\alpha\,\tau_j}}\right)\text{erf}\!\left(\frac{W/2}{\sqrt{4\alpha\,\tau_j}}\right)$$
+<p>where $\alpha = T/S_y = K_h b / S_y$ is the aquifer diffusivity and $\tau_j$ the elapsed time since parcel $j$ arrived. The mound is capped at the basin invert plus a permitted rise into the ponded column, $H_{\text{cap}} = D_{gw} + \alpha_r h$; the shipped default $\alpha_r = 0$ pins the mound at the basin bottom, a conservative, <strong>peak-preserving</strong> recession. If the tentative mound would exceed the cap, GAH-3D <strong>back-calculates</strong> the recharge rate that holds it exactly at the cap and reduces the surface infiltration flux to match, so the mound never overshoots and mass is preserved.</p>
+
+<h3>11.6 Basin mass balance</h3>
+<p>At every timestep GAH-3D steps the forward mass balance:</p>
+$$S(t+\Delta t) = S(t) + Q_{\text{in}}\Delta t - Q_{\text{infil}}\Delta t$$
+<p>with $Q_{\text{infil}} = f_{\text{actual}} \cdot A_{\text{active}}(h)$, where $A_{\text{active}}$ is the wetted plan area (including batters) at the current depth. After the storm ends ($Q_{\text{in}}=0$) routing continues until the basin drains. The total post-storm drain time is reported.</p>
+
+<!-- =================================================================== -->
+<h2 id="pooling">12. Overtopping &amp; Pooling</h2>
+<p>GAH-3D does <strong>not</strong> shed water when inflow exceeds basin capacity plus infiltration. Instead, water is assumed to <strong>pool above the basin crest</strong> (overtopping): the reported depth is extrapolated beyond $D_b$ using the batter geometry, so the depth time-series may exceed the design maximum depth.</p>
+<p>This is a conservative indicator: a peak depth greater than $D_b$ means the basin is <strong>undersized</strong> for that event. The reported <code>total_overflow_m3</code> is the volume stored above the crest. When overtopping occurs, GAH-3D adds a warning &mdash; a summary line (how many of the routed events overtop, and the worst peak depth) plus one line per overtopping event.</p>
+
+<!-- =================================================================== -->
+<h2 id="structures">13. Hydraulic Outflow Structures</h2>
+<div class="param"><strong>Input (optional):</strong> a list of outflow structures &mdash; enable the <em>Hydraulic Structures</em> card and add any number of weirs, culverts and/or grated pits, each with its own level and geometry.</div>
+<p>Infiltration basins usually include a controlled <strong>outflow</strong> so that events larger than the infiltration design are released to a downstream system rather than overtopping uncontrolled (&sect;12). GAH-3D lets you add surface-outflow structures that discharge once the ponded level reaches their crest/inlet/invert. They operate on the <strong>surface storage only</strong>: each timestep the structure discharge is computed from the current ponded depth and removed from storage, capped to the water available. The infiltration and groundwater-mound mechanics (&sect;11) are <em>unchanged</em>, so the validated GAH-3D engine is preserved &mdash; structures simply lower the ponded depth and shorten the drain time.</p>
+
+<h3>13.1 Broad-crested weir</h3>
+<div class="param"><strong>Inputs:</strong> crest level (m AHD), crest length, lining (bare earth / concrete / rock-lined).</div>
+<p>Discharge follows the broad-crested weir equation once the water surface exceeds the crest (head $H$):</p>
+$$Q = C_d\,L\,H^{3/2}, \qquad H = \max(0,\; \text{water level} - \text{crest})$$
+<p>The discharge coefficient $C_d$ depends on the crest lining (concrete 1.71, rock-lined 1.49, bare earth 1.32; Henderson 1966, Bos 1989).</p>
+
+<h3>13.2 Culvert (HY-8)</h3>
+<div class="param"><strong>Inputs:</strong> material (RCP / PVC / CSP / RCBC), diameter (or width &times; height for a box), invert level (m AHD), barrel length, slope, number of barrels.</div>
+<p>Each culvert is evaluated with the FHWA HY-8 method (HIF-12-026): the capacity is the lesser of <strong>inlet control</strong> (an orifice/nomograph relationship on the headwater above the invert) and <strong>outlet control</strong> (Manning's friction through the barrel, with roughness $n$ set by material). The governing (smaller) capacity is used and multiplied by the number of barrels.</p>
+
+<h3>13.3 Grated pit</h3>
+<div class="param"><strong>Inputs:</strong> inlet (grate) level (m AHD), plan length &amp; width, open-area ratio.</div>
+<p>A surcharge grated pit (QUDM 2013, &sect;7.6) is taken as the lesser of a <strong>weir</strong> inflow around the grate perimeter (shallow head) and an <strong>orifice</strong> inflow through the open grate area (deeper head):</p>
+$$Q = \min\!\big(C_w\,P\,H^{3/2},\; C_o\,A_{\text{open}}\sqrt{2gH}\big)$$
+<p>where $P$ is the grate perimeter, $A_{\text{open}}$ the open area (plan area &times; open-area ratio), and $H$ the head above the grate.</p>
+
+<p>All structures appear in the <strong>Design Preview</strong> section and plan at their set levels (&sect;17), and their discharge is deducted from surface storage during routing.</p>
+
+<!-- =================================================================== -->
+<h2 id="climate">14. Climate Change Factors</h2>
+<div class="param"><strong>Inputs:</strong> <code>climate_scenario</code> (SSP1-2.6 &hellip; SSP5-8.5, or Historical), <code>climate_epoch</code> (2030&ndash;2100).</div>
+<p>GAH-3D can uplift the historical BoM IFD design depths using the nationally-uniform ARR climate-change factors (ARR 2019, Book 1 Ch. 6), based on CMIP6 SSP scenarios and IPCC AR6 temperature projections re-baselined to 1961&ndash;1990. The multiplicative factor depends on the SSP, the planning-horizon year, and the storm-duration bin:</p>
+$$P_{\text{future}} = P_{\text{historical}} \times \text{factor}(\text{SSP}, \text{epoch}, \text{duration})$$
+<p>Select "Historical" for an unadjusted assessment (factor = 1.0). For a 2050, 5%-AEP basin on the Swan Coastal Plain, SSP2-4.5 typically adds ~25% to short-duration depths.</p>
+
+<!-- ==================================================================== -->
+<h2 id="clogging">15. Maintenance Planning (Clogging Degradation)</h2>
+<div class="param"><strong>Inputs:</strong> <code>clogging_years</code> (asset life), <code>final_k_cl_m_per_day</code> (clogged K at end of life), <code>final_l_cl_m</code> (clogged thickness at end of life) &mdash; set in the Maintenance Planning tab.</div>
+<p>Basin infiltration declines over the asset life as a clogging layer (silt, biological crust) builds on the floor. This is <strong>not an optional analysis</strong> &mdash; an infiltration basin must be designed for its end-of-life (clogged) performance, not just its as-new condition. A basin that drains acceptably when new can overtop or fail to drain within the design time as it ages, so the clogging assessment is a required part of the design, not a check to skip.</p>
+<p>The assessment re-routes <em>all</em> design storms for each year from new (year 0) to end of life. The clogged-layer conductivity $K_c$ <strong>decays geometrically (exponentially)</strong> from the as-built value (the native $K_v$) to your end-of-life value, while the skin thickness $z_c$ grows linearly; the tool reports how peak depth and drain time degrade over time. Exponential decay is used because a linear $K_c$ ramp is non-physical here &mdash; it keeps the skin as permeable as the native soil until $K_c$ collapses in the final year, giving a &ldquo;cliff-edge&rdquo; timeline (flat for the whole asset life, then a sudden jump). Geometric decay instead produces gradual, year-on-year degradation. Because the critical event is re-evaluated each year <em>and</em> the groundwater mound is computed, you can see whether the basin will overtop or fail to drain within the design time as it ages &mdash; supporting a maintenance/rehabilitation schedule. The $K_c$ and $z_c$ used for every year are listed in the results table, shown on the timeline chart, and included in the PDF report.</p>
+<p><strong>Year 0 is the as-built, clean basin</strong> and reproduces the main (unclogged) design run <em>exactly</em> &mdash; it reuses the same soil-moderation factor, groundwater levels and design storm, with no clogged layer. The clogged skin is introduced only from year&nbsp;1 onward as it accumulates, so the timeline begins from a value you can cross-check against the Results Dashboard.</p>
+<div class="warn"><strong>Consult the asset owner.</strong> The clogging timeline (years to end-of-life) and the end-of-life clogged-layer parameters ($K_c$, $z_c$) depend on the catchment land use, sediment load, vegetation, and the owner's maintenance regime. <strong>Do not assume defaults</strong> &mdash; agree the clogging parameters and maintenance interval with the asset owner / maintaining authority before finalising the design. Typical end-of-life values are $K_c \approx 0.1$&ndash;0.3 m/day and $z_c \approx 0.05$&ndash;0.25 m, but site-specific data should be used where available.</div>
+<p>This analysis routes all 14 standard ARR durations &times; 10 patterns per year with a 72-hour drain window, so it is much slower than a normal Run; a per-year progress bar streams as it runs.</p>
+
+<!-- =================================================================== -->
+<h2 id="selection">16. ARR Probability-Neutral Pattern Selection</h2>
+<p>ARR 2019 provides 10 temporal patterns per duration, none of which has a defined probability. To avoid picking the worst or best case, GAH-3D uses the <strong>probability-neutral</strong> method:</p>
+<ol>
+  <li>Route all 10 patterns through the basin for each duration;</li>
+  <li>Rank by peak basin depth (deepest first);</li>
+  <li>Adopt the <em>N</em>th-highest, where $N$ = the pattern-rank parameter (default 4);</li>
+  <li>The <strong>critical duration</strong> is the adopted pattern (across all durations) producing the greatest peak depth.</li>
+</ol>
+<p>GAH-3D also separately tracks the <strong>critical drawdown</strong> event (the adopted pattern with the longest post-storm drain time), so you can check both peak-storage and drain-time performance.</p>
+
+<!-- =================================================================== -->
+<h2 id="outputs">17. Interpreting the Outputs &amp; Reporting</h2>
+<table>
+  <tr><th>Output</th><th>What it means</th></tr>
+  <tr><td><strong>Peak depth (m)</strong></td><td>Maximum water depth in the basin during the critical event. If it exceeds the design max depth, the basin overtops (see &sect;12).</td></tr>
+  <tr><td><strong>Peak storage (m&sup3;)</strong></td><td>Maximum stored volume during the critical event.</td></tr>
+  <tr><td><strong>Total infiltration (m&sup3;)</strong></td><td>Cumulative volume infiltrated over the routing window.</td></tr>
+  <tr><td><strong>Drain time (hr)</strong></td><td>Time from storm end to the basin effectively emptying. Compare against your council's drain-time criterion (often 24&ndash;72 hr).</td></tr>
+  <tr><td><strong>Peak mound (m)</strong></td><td>Maximum groundwater-mound rise above the static water table beneath the basin centre.</td></tr>
+  <tr><td><strong>Overtopping / overflow (m&sup3;)</strong></td><td>Volume stored above the basin crest when the design depth is exceeded.</td></tr>
+  <tr><td><strong>Warnings</strong></td><td>Summary and per-event overtopping notices (see &sect;12).</td></tr>
+</table>
+<div class="warn"><strong>Design judgement.</strong> A basin that overtops in the design event, or whose drain time exceeds the council criterion, should be enlarged (increase base area or depth) or have its inflow reduced (source control). The basin must also be designed for its <strong>end-of-life (clogged) performance</strong> &mdash; run the <strong>Maintenance Planning</strong> analysis (&sect;15), with clogging parameters and timeline agreed with the asset owner, to confirm acceptable performance over the asset life and to set the maintenance schedule.</div>
+
+<h3>17.1 Design Preview &mdash; 2D section &amp; plan</h3>
+<p>The Design Preview shows a live, interactive <strong>cross-section</strong> and <strong>plan</strong> of the basin that update as you edit the geometry, groundwater levels and hydraulic structures &mdash; <em>before</em> you run. The section is drawn to <strong>true 1:1 scale</strong>, so the batters are shown at exactly the side slope you entered, together with the design groundwater level, the saturated zone and the base aquifer. After a run it overlays the critical ponded water level and the peak groundwater mound.</p>
+
+<h3>17.2 Results Dashboard</h3>
+<p>The Results Dashboard plots the ponded-depth time-series for a selected duration (all 10 temporal patterns, with the median-peak pattern highlighted and the allowable depth marked), plus the groundwater response (mound, effective infiltration rate, cumulative infiltration) for the median pattern. Toggle buttons jump to the <strong>critical depth</strong> and <strong>critical drawdown</strong> events. The Design Summary tab also shows a <strong>median ponded depth per duration</strong> bar chart, so you can see at a glance which durations approach or exceed the allowable depth.</p>
+
+<h3>17.3 Input lock</h3>
+<p>Once results are on screen the design inputs are <strong>locked</strong> so the displayed results always correspond to the inputs that produced them. Use <strong>Clear Results</strong> to unlock the inputs (and reset the preview to design mode) before changing parameters and re-running.</p>
+
+<h3>17.4 PDF report &amp; hydrograph export</h3>
+<p><strong>Generate Report</strong> produces a PDF design record containing: the site location; the hydrology (AEP, durations, catchments); the soil, hydraulic and groundwater parameters; the cross-section and plan; the results summary with the median-depth-per-duration chart; the critical ponded-depth and critical-drawdown graphs; and the clogging (Maintenance Planning) timeline and table. The full design-storm <strong>hydrographs are exported alongside as a CSV</strong> rather than enlarging the PDF. The report requires a completed <strong>Maintenance Planning</strong> run (&sect;15) &mdash; clogging must be considered before a design record is issued.</p>
+
+<!-- =================================================================== -->
+<h2 id="references">18. References</h2>
+<ol>
+  <li>Argue, J.R. (2004). <em>Water Sensitive Urban Design: Basic Procedures for 'Source Control' of Stormwater</em>. Urban Water Resources Centre, University of South Australia.</li>
+  <li>Ball, J., Babister, M., Nathan, R., Weeks, W., Weinmann, E., Retallick, M. &amp; Testoni, I. (Eds.) (2019). <em>Australian Rainfall and Runoff: A Guide to Flood Estimation</em>. Commonwealth of Australia.</li>
+  <li>Bos, M.G. (Ed.) (1989). <em>Discharge Measurement Structures</em> (3rd ed.). International Institute for Land Reclamation and Improvement (ILRI), Wageningen.</li>
+  <li>Bureau of Meteorology (2016). <em>Revised Intensity-Frequency-Duration Design Rainfall Data System</em>. Commonwealth of Australia.</li>
+  <li>Carsel, R.F. &amp; Parrish, R.S. (1988). 'Developing joint probability distributions of soil water retention characteristics'. <em>Water Resources Research</em>, 24(5), pp. 755&ndash;769.</li>
+  <li>Cocks, G. (2007). 'Disposal of Stormwater Runoff by Soakage in Perth, Western Australia'. <em>Australian Geomechanics</em>, 42(3), pp. 101&ndash;114.</li>
+  <li>Engineers Australia (2006). <em>Australian Runoff Quality</em>. Engineers Australia, Canberra.</li>
+  <li>Federal Highway Administration (2012). <em>Hydraulic Design of Highway Culverts</em> (HDS-5, Report FHWA-HIF-12-026) and the HY-8 culvert-analysis method. U.S. Department of Transportation.</li>
+  <li>Hantush, M.S. (1967). 'Growth and decay of groundwater-mounds in response to uniform percolation'. <em>Water Resources Research</em>, 3(1), pp. 227&ndash;234.</li>
+  <li>Henderson, F.M. (1966). <em>Open Channel Flow</em>. Macmillan, New York.</li>
+  <li>Main Roads Western Australia. <em>Supplement to Austroads Guide to Road Design Part 5A: Drainage &mdash; Road Surface, Networks, Basins and Subsurface</em>.</li>
+  <li>Queensland Urban Drainage Manual (QUDM) (2013, 3rd ed.). Institute of Public Works Engineering Australasia (Queensland) / Department of Energy and Water Supply. &sect;7.6 (surcharge pits).</li>
+  <li>Ragan, R.M. &amp; Duru, J.O. (1972). 'Kinematic wave nomograph for times of concentration'. <em>Journal of the Hydraulics Division</em>, ASCE, 98(HY10), pp. 1765&ndash;1771.</li>
+  <li>Stormwater Management Manual for Western Australia (2004). Department of Water, Government of Western Australia.</li>
+  <li>Van Genuchten, M.Th. (1980). 'A closed-form equation for predicting the hydraulic conductivity of unsaturated soils'. <em>Soil Science Society of America Journal</em>, 44(5), pp. 892&ndash;898.</li>
+  <li>Watson, M.D. (1981). 'Non-iterative Horton's equation'. <em>Civil Engineering Transactions</em>, Institution of Engineers Australia, pp. 240&ndash;243.</li>
+</ol>
+
+<p style="margin-top:3rem;text-align:center;color:var(--muted);font-size:.8rem;">
+  GAH-3D &mdash; &copy; 2024&ndash;2026 <a href="https://innealta.com.au" style="color:var(--primary)">Innealta Engineering</a>
+</p>
+
+</div>
+</body>
+</html>

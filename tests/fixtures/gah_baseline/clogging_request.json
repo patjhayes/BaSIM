@@ -1,0 +1,35 @@
+{
+  "latitude": -31.95,
+  "longitude": 115.86,
+  "catchments": [
+    {
+      "name": "Roof",
+      "area_ha": 0.05,
+      "slope": 0.01,
+      "paved_fraction": 0.9,
+      "supplementary_fraction": 0.0,
+      "grassed_fraction": 0.1
+    }
+  ],
+  "design_aep_percent": 10.0,
+  "critical_duration_minutes": 30,
+  "critical_pattern_rank": 4,
+  "basin_base_length_m": 8.0,
+  "basin_base_width_m": 5.0,
+  "basin_side_slope_ratio": 4.0,
+  "basin_max_depth_m": 1.2,
+  "initial_moisture_deficit": 0.2,
+  "capillary_suction_head_m": 0.15,
+  "specific_yield": 0.25,
+  "vertical_k_mm_per_hr": 50.0,
+  "horizontal_k_mm_per_hr": 250.0,
+  "soil_moderation_factor": 0.5,
+  "surface_level_m_ahd": 10.0,
+  "design_gwl_m_ahd": 7.0,
+  "base_aquifer_level_m_ahd": 0.0,
+  "basin_side_infil_enabled": true,
+  "clogging_years": 1,
+  "final_k_cl_m_per_day": 0.1,
+  "final_l_cl_m": 0.25,
+  "use_live_data": false
+}

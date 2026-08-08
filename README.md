@@ -1,256 +1,112 @@
-# Basin Infiltration Modeling Software (BaSIM)
+# BaSIM v4
 
-A Python-based tool for modeling stormwater infiltration basins using MODFLOW 6 and the LAK (Lake) package. This software allows engineers to quickly size and analyze infiltration basins by importing TS1 hydrograph files and running transient groundwater models.
+BaSIM is an authenticated stormwater infiltration-basin design application
+using the Green-Ampt/Hantush 3D (GAH-3D) engine. It supports ARR/BoM rainfall
+inputs, probability-neutral critical storm selection, groundwater mounding,
+hydraulic outlet structures, and multi-year clogging degradation analysis.
 
-## 🎯 Features
+## Architecture
 
-- **Import DRAINS TS1 files**: Automatically parse hydrograph data from DRAINS software
-- **Basin parameter input**: Enter key design parameters (dimensions, hydraulic properties)
-- **Automated MODFLOW 6 modeling**: Complete model setup with LAK package for basin-aquifer interaction
-- **Transient simulation**: Model basin filling and emptying over time
-- **Professional visualization**: Groundwater contour plots and basin stage time series
-- **Adaptive grid sizing**: Automatically adjusts model grid based on basin dimensions
-- **Input validation**: Parameter range checking with user-friendly warnings
+BaSIM runs as four services:
 
-## 🛠️ Installation
+1. A vanilla multipage Vite frontend.
+2. A lightweight FastAPI backend for authentication, billing, validation, and
+   durable job APIs.
+3. A Celery compute worker that imports and runs the GAH-3D engine.
+4. Redis as the Celery broker and the source of truth for job state, replayable
+   progress events, cancellation flags, requests, and compressed results.
 
-### Prerequisites
-- Python 3.8 or higher
-- MODFLOW 6.6.2 executable at: `C:\Users\patri\OneDrive\Documents\mf6.6.2_win64\bin\mf6.exe`
-- DRAINS TS1 files in: `C:\Users\patri\OneDrive\BaSIM\DRAINS\OUTPUT\`
+The API process does not import NumPy, SciPy, or the numerical engine. Jobs and
+results expire after 24 hours by default. Reloading the frontend does not lose
+job state because status and event history are persisted in Redis.
 
-### Setup Instructions
+## Setup
 
-1. **Navigate to project directory:**
-   ```bash
-   cd C:\Users\patri\OneDrive\BaSIM
-   ```
+Python 3.10 and Node 22 are the validated local versions.
 
-2. **Create and activate virtual environment:**
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\activate
-   ```
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
 
-3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+Set-Location frontend
+npm ci
+Set-Location ..
 
-4. **Verify installation:**
-   ```bash
-   python src\test_functions.py
-   ```
-
-## 🚀 Usage
-
-### Running the Application
-```bash
-# Ensure virtual environment is activated
-.venv\Scripts\activate
-
-# Run the main application
-python src\main.py
+Copy-Item .env.example .env
 ```
 
-### Licensing (required for running simulations)
-- Open the app and go to Help → License…
-- Click “Save Request File…” to generate `license_request.json` with your machine ID.
-- Send this file to your license issuer (BaSIM admin). You’ll receive a `license.lic`.
-- Back in the License dialog, click “Import License…” and select your `license.lic`.
-- The status bar will show your edition and days remaining. The Run button is enabled when licensed.
+Populate the Supabase, Stripe, and Vite values in `.env`. Apply
+`database_schema.sql`, followed by `migrations/002_analysis_credits.sql`, to the
+Supabase database. Migration 002 supplies atomic, idempotent one-credit debit
+and refund functions linked to each analysis job UUID.
 
-License storage: `%ProgramData%\BaSIM\license\license.lic`
+## Run Locally
 
-Public key: Clients must know the issuer public key for offline verification. Either:
-- Set environment variable `BASIM_PUBKEY` to the Ed25519 public key hex, or
-- Embed it in `src/licensing/verifier.py` (PUBLIC_KEY_HEX).
+With Docker Compose:
 
-### Input Parameters
-The software will prompt for the following basin design parameters:
-
-| Parameter | Description | Typical Range | Units |
-|-----------|-------------|---------------|-------|
-| Basin Length | Length of infiltration basin | 5-100 | m |
-| Basin Width | Width of infiltration basin | 5-100 | m |
-| Basin Depth | Maximum depth of basin | 0.5-5 | m |
-| GW Clearance | Distance from basin bottom to water table | 1-10 | m |
-| Hydraulic Conductivity | Soil permeability | 0.01-10 | m/day |
-| Specific Yield | Drainable porosity | 0.01-0.3 | - |
-
-### TS1 File Selection
-- Select a TS1 hydrograph file using the file dialog
-- Files should be in DRAINS format with time in minutes and flow in m³/s
-- Sample files are available in `DRAINS\OUTPUT\` directory
-
-## 📊 Output
-
-The software generates:
-
-1. **Groundwater Contour Plot**: Shows head distribution at final time step
-2. **Basin Stage Hydrograph**: Time series of water level in the basin
-3. **Model Files**: Complete MODFLOW 6 input and output files in `model_output\` directory
-4. **Summary Statistics**: Peak flows, duration, and model performance metrics
-
-### Output Files Location
-```
-model_output/
-├── basin_model.hds          # Head file (groundwater levels)
-├── basin_model.bud          # Budget file (water balance)
-├── basin_model.lak.stage    # Lake stage file (basin water levels)
-├── basin_model.lst          # MODFLOW listing file
-├── model_results.png        # Combined visualization plots
-└── inflow.ts               # Time series input file
+```powershell
+docker compose up
 ```
 
-## 🏗️ Technical Details
+The frontend is available at `http://127.0.0.1:5174` and the API at
+`http://127.0.0.1:8000`.
 
-### Model Configuration
-- **Grid System**: Adaptive cell size (1-10m) based on basin dimensions
-- **Domain Size**: Minimum 5x basin size to minimize boundary effects
-- **Vertical Discretization**: 10 layers with 5m thickness below basin
-- **Boundary Conditions**: Constant head on domain perimeter
-- **Time Stepping**: Variable time steps matching TS1 file duration
+To run processes directly, start Redis and then use separate terminals:
 
-### LAK Package Implementation
-- Horizontal connections between lake and aquifer at basin bottom
-- Time series inflow from TS1 data with linear interpolation
-- Stage-dependent infiltration rates based on hydraulic conductivity
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-1. **"Module not found" errors**
-   - Ensure virtual environment is activated: `.venv\Scripts\activate`
-   - Reinstall packages: `pip install -r requirements.txt`
-
-2. **MODFLOW executable not found**
-   - Verify path in main.py (line ~100): Update `exe_name` parameter
-   - Test executable: `C:\Users\patri\OneDrive\Documents\mf6.6.2_win64\bin\mf6.exe -v`
-
-3. **TS1 parsing errors**
-   - Check file format: Should be comma-separated with time in minutes
-   - Verify file contains numeric data after header lines
-
-4. **Model convergence issues**
-   - Try smaller basin dimensions or adjust hydraulic parameters
-   - Check model output files in `model_output\` for detailed error messages
-
-### Getting Help
-- Run test script: `python src\test_functions.py`
-- Check console output for detailed error information
-- Review MODFLOW listing file: `model_output\basin_model.lst`
-
-## 📁 Project Structure
-```
-BaSIM/
-├── .venv/                     # Python virtual environment
-├── src/
-│   ├── main.py               # Main application (334 lines)
-│   └── test_functions.py     # System verification tests
-├── model_output/             # MODFLOW model files and results
-├── DRAINS/
-│   └── OUTPUT/              # Sample TS1 hydrograph files
-├── requirements.txt          # Python package dependencies
-└── README.md                # This documentation
+```powershell
+python -m uvicorn src.api.main:app --reload --port 8000
+python -m celery -A src.worker.celery_app.celery_app worker --loglevel=info
+Set-Location frontend; npm run dev
 ```
 
-## 🔬 Testing and Validation
+## Analysis API
 
-The software includes comprehensive testing:
-- Package import verification
-- TS1 file parsing validation
-- MODFLOW executable accessibility
-- Directory structure verification
+All analysis and job routes require a Supabase bearer token.
 
-Run all tests: `python src\test_functions.py`
+- `POST /api/analyses/design`
+- `POST /api/analyses/clogging`
+- `GET /api/jobs/{job_id}`
+- `GET /api/jobs/{job_id}/events?after=0`
+- `GET /api/jobs/{job_id}/result`
+- `POST /api/jobs/{job_id}/cancel`
 
-## 📐 Technical Justification: Infiltration Sizing Approach
+Each design or clogging submission costs one credit for commercial accounts.
+Addresses ending in `.gov.au` or `@innealta.com.au` use the free tier. Failed,
+cancelled, or broker-rejected paid jobs use the idempotent refund function.
 
-The public MODFLOW-USG engine utilizes an upstream weighting formulation that treats dry cell boundaries as gravity-driven seepage faces, omitting the capillary suction gradient ($\psi$). To preserve the computational speed and efficiency of unstructured quadtree grids without numerical instability, BaSIM upscales the user's clogged layer hydraulic conductivity to an Effective Conductivity ($K_{effective}$).
+## Tests
 
-This is achieved by setting the steady-state MODFLOW Darcy flux equal to the transient physical Green-Ampt infiltration flux at a user-selected design head threshold:
+Run the migrated engine and exact pinned-source parity suite:
 
-$$K_{effective} = 0.5 \times K_{clog} \left( 1 + \frac{L_{clog} + \psi}{H_{threshold}} \right)$$
+```powershell
+$env:PYTHONPATH = "$PWD/src"
+python -m pytest tests/engine -q
+```
 
-*(Note: the $0.5$ scalar is a structural mapping factor required to equate physical Darcy flow with MODFLOW's unconfined half-thickness vertical conductance formulation).*
+Run API, Redis-store, worker-lifecycle, and billing/refund tests:
 
-The **Infiltration Sizing Approach** UI slider adjusts $H_{threshold}$ as a percentage of the maximum basin depth, allowing the user to select a mass-conservative lower bound for volume sizing, or an empirically grounded upper bound for rapid drawdown analysis.
+```powershell
+python -m pytest tests/api tests/jobs tests/worker -q
+```
 
-## 🚀 Future Enhancements
+Build the production frontend:
 
-### Planned Features
-1. **Graphical User Interface**: Replace CLI with user-friendly GUI
-2. **Basin Optimization**: Automatic sizing based on volume requirements
-3. **Scenario Comparison**: Batch processing of multiple TS1 files
-4. **Export Functionality**: Save results to Excel/CSV formats
-5. **Advanced Visualization**: 3D plots and animation capabilities
-6. **Configuration Management**: Save/load project settings
+```powershell
+Set-Location frontend
+npm run build
+```
 
-### Development Priorities
-1. Get basic model running reliably ✅
-2. Add parameter validation and error handling ✅
-3. Implement GUI for better usability (next)
-4. Add optimization and comparison features
-5. Polish with documentation and export capabilities
+Canonical offline design and clogging results are under
+`tests/fixtures/gah_baseline`. See `VENDORED_GAH3D.md` for the pinned upstream
+commit and fixture regeneration command.
 
-## 📄 License and Disclaimer
+## Deployment
 
-This software is developed for engineering analysis purposes. Users should:
-- Validate results against other methods
-- Ensure compliance with local stormwater management regulations
-- Use appropriate safety factors in design
-- Consider site-specific conditions not captured in the model
+`render.yaml` provisions the static frontend, FastAPI backend, Celery worker,
+and Redis. Configure all `sync: false` environment variables in Render before
+deployment and apply the database migrations first.
 
-## 👥 Support
-
-For technical support:
-1. Check troubleshooting section above
-2. Review test output: `python src\test_functions.py`
-3. Examine MODFLOW output files for detailed diagnostics
-4. Refer to flopy documentation: https://flopy.readthedocs.io/
-
----
-
-**Version**: 1.0.0  
-**Last Updated**: August 2025  
-**Python Version**: 3.8+  
-**MODFLOW Version**: 6.6.2
-
-## Packaging and Binaries
-
-- Use PowerShell script `build.ps1` to create a Windows executable via PyInstaller.
-- Optional `-DownloadMf6` flag fetches MODFLOW 6 into `bin/` and the spec bundles `bin/mf6.exe` plus any `bin/*.dll`.
-- At runtime, BaSIM locates MODFLOW 6 in this order:
-   1. `BASINSIM_MF6` environment variable
-   2. Packaged `bin/mf6.exe` (inside the app)
-   3. User override in `%USERPROFILE%\.basinsim\prefs.json` under key `mf6_path`
-   4. `mf6` on system PATH
-
-### MSI Installer (Enterprise)
-- The WiX MSI creates `%ProgramData%\BaSIM\license` for system-wide license storage.
-- You can set the public key during install via MSI property `BASIMPUBKEY`:
-   - Example (run as admin):
-      ```powershell
-   msiexec /i BaSIM.msi BASIMPUBKEY=0123abcd... /qn
-      ```
-   - This sets a system environment variable `BASIM_PUBKEY` used by the verifier.
-
-## 🔑 Issuing Licenses (Admin)
-1. Generate an Ed25519 key pair (private kept secret, public shared with clients):
-    ```python
-    from nacl.signing import SigningKey
-    sk = SigningKey.generate()
-    priv_hex = sk.encode().hex()
-    pub_hex = sk.verify_key.encode().hex()
-    print('PRIVATE (keep secret):', priv_hex)
-    print('PUBLIC (distribute):', pub_hex)
-    ```
-2. Set the public key on client machines (env `BASIM_PUBKEY`) or embed in `verifier.py`.
-3. Issue a node-locked license using the provided CLI:
-    ```powershell
-    # In repo root
-    python tools\license_issuer.py path\to\license_request.json --customer "Acme" --edition Enterprise --out license.lic --private-key-hex <PRIVATE_HEX>
-    ```
-4. Deliver `license.lic` to the client; they import it via Help → License…
+Live ARR/BoM access retains the vendored GAH cache and local fallback behavior.
+A production-approved live feed or provisioned dataset remains a release gate
+for engineering use.

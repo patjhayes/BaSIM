@@ -3,16 +3,24 @@ services:
   - type: web
     name: basim-backend
     env: python
-    buildCommand: "python scripts/download_modflow.py && pip install -r requirements.txt"
+    buildCommand: "pip install -r requirements.txt"
     startCommand: "python -m uvicorn src.api.main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
-        value: 3.10.0
+        value: 3.10.11
       - key: CELERY_BROKER_URL
         fromService:
           type: redis
           name: basim-redis
           property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: basim-redis
+          property: connectionString
+      - key: JOB_TTL_SECONDS
+        value: "86400"
       - key: STRIPE_API_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
@@ -24,16 +32,16 @@ services:
       - key: SUPABASE_JWT_SECRET
         sync: false
 
-  # Frontend Static Site (Vue/Vite)
+  # Frontend Static Site (vanilla multipage Vite)
   - type: web
     name: basim-frontend
     runtime: static
     rootDir: frontend
-    buildCommand: "npm install && npm run build"
+    buildCommand: "npm ci && npm run build"
     staticPublishPath: "./dist"
     envVars:
       - key: NODE_VERSION
-        value: "20.18.0"
+        value: "22.19.0"
       - key: VITE_API_URL
         fromService:
           type: web
@@ -49,26 +57,29 @@ services:
   - type: worker
     name: basim-compute-worker
     env: python
-    buildCommand: "python scripts/download_modflow.py && pip install -r requirements.txt"
-    startCommand: "celery -A src.api.worker.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -m celery -A src.worker.celery_app.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}"
 
     envVars:
       - key: PYTHON_VERSION
-        value: 3.10.0
+        value: 3.10.11
       - key: CELERY_BROKER_URL
         fromService:
           type: redis
           name: basim-redis
           property: connectionString
-      - key: STRIPE_API_KEY
-        sync: false
-      - key: STRIPE_WEBHOOK_SECRET
-        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: basim-redis
+          property: connectionString
+      - key: JOB_TTL_SECONDS
+        value: "86400"
+      - key: CELERY_CONCURRENCY
+        value: "2"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_JWT_SECRET
         sync: false
 
   # Redis Broker

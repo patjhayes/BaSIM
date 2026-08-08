@@ -1,0 +1,94 @@
+{
+  "gah_source_commit": "7258e44f47759ee23c9c73dba047698f7b40df6a",
+  "design": {
+    "runoff_rows": 10,
+    "hydrographs": 10,
+    "depth_summary": {
+      "critical_duration_minutes": 30,
+      "critical_pattern_rank": 6,
+      "peak_depth_m": 0.1431,
+      "max_storage_m3": 6.8488,
+      "total_infiltration_m3": 9.4952,
+      "total_overflow_m3": 0.0,
+      "drain_time_hours": 2.92,
+      "spilled": false,
+      "peak_mound_height_m": 0.0
+    },
+    "drawdown_summary": {
+      "critical_duration_minutes": 30,
+      "critical_pattern_rank": 7,
+      "peak_depth_m": 0.1421,
+      "max_storage_m3": 6.7952,
+      "total_infiltration_m3": 9.4951,
+      "total_overflow_m3": 0.0,
+      "drain_time_hours": 2.92,
+      "spilled": false,
+      "peak_mound_height_m": 0.0
+    },
+    "warnings": []
+  },
+  "clogging": {
+    "years": [
+      {
+        "year": 0,
+        "k_cl_m_per_day": 1.2,
+        "l_cl_m": 0.001,
+        "peak_depth_m": 0.1983,
+        "drain_time_hours": 5.5,
+        "spilled": false,
+        "depth_summary": {
+          "critical_duration_minutes": 540,
+          "critical_pattern_rank": 3,
+          "peak_depth_m": 0.1983,
+          "max_storage_m3": 10.1458,
+          "total_infiltration_m3": 27.6322,
+          "total_overflow_m3": 0.0,
+          "drain_time_hours": 4.0,
+          "spilled": false,
+          "peak_mound_height_m": 0.0
+        },
+        "drawdown_summary": {
+          "critical_duration_minutes": 540,
+          "critical_pattern_rank": 10,
+          "peak_depth_m": 0.1999,
+          "max_storage_m3": 10.2452,
+          "total_infiltration_m3": 27.6473,
+          "total_overflow_m3": 0.0,
+          "drain_time_hours": 5.5,
+          "spilled": false,
+          "peak_mound_height_m": 0.0
+        }
+      },
+      {
+        "year": 1,
+        "k_cl_m_per_day": 0.1,
+        "l_cl_m": 0.25,
+        "peak_depth_m": 0.3951,
+        "drain_time_hours": 60.0,
+        "spilled": false,
+        "depth_summary": {
+          "critical_duration_minutes": 720,
+          "critical_pattern_rank": 10,
+          "peak_depth_m": 0.3951,
+          "max_storage_m3": 25.2356,
+          "total_infiltration_m3": 30.6004,
+          "total_overflow_m3": 0.0,
+          "drain_time_hours": 60.0,
+          "spilled": false,
+          "peak_mound_height_m": 0.0
+        },
+        "drawdown_summary": {
+          "critical_duration_minutes": 720,
+          "critical_pattern_rank": 10,
+          "peak_depth_m": 0.3951,
+          "max_storage_m3": 25.2356,
+          "total_infiltration_m3": 30.6004,
+          "total_overflow_m3": 0.0,
+          "drain_time_hours": 60.0,
+          "spilled": false,
+          "peak_mound_height_m": 0.0
+        }
+      }
+    ]
+  }
+}

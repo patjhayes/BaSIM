@@ -4,6 +4,7 @@ import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
 from .auth_utils import get_current_user, get_current_admin, supabase_admin
 from pydantic import BaseModel
+from src.billing.credits import debit_analysis_credit, refund_analysis_credit
 
 router = APIRouter()
 
@@ -142,5 +143,5 @@ def _add_credits(project_code: str, amount: int, type_str: str, user_id: str = N
     }
     if user_id:
         tx['user_id'] = user_id
-        
+
     supabase_admin.table('transactions').insert(tx).execute()

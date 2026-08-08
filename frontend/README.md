@@ -1,17 +1,25 @@
-# BasinSIM Frontend (Vue 3 + Vite)
+# BaSIM Frontend
 
-This is the modern BasinSIM UI. It talks to the FastAPI backend on http://localhost:8000.
+This is the vanilla multipage Vite port of the GAH-3D interface. It submits
+design and clogging analyses to FastAPI, replays Redis-backed progress events,
+polls durable job status, and retrieves completed results.
 
-## Prerequisites (Windows)
-- Install Node.js LTS from https://nodejs.org (includes npm)
+## Pages
+
+- `index.html`: basin design and clogging analysis
+- `billing.html`: project balances and Stripe checkout
+- `help.html`: technical reference
+- `login.html`: Supabase sign-in and account creation
 
 ## Setup
-1. Open a terminal in this folder.
-2. Install deps: `npm install`
-3. Run dev server: `npm run dev`
-4. Open http://localhost:5173
 
-Backend: from the repo root, run the backend with:
-- `python -m uvicorn src.api.main:app --reload --port 8000`
+```powershell
+npm ci
+npm run dev
+```
 
-TailwindCSS is configured via `tailwind.config.js`; styles are in `src/styles.css` and imported by `src/main.ts`.
+The dev server runs at `http://127.0.0.1:5174` and proxies `/api` to
+`http://127.0.0.1:8000`. Set `VITE_API_URL`, `VITE_SUPABASE_URL`, and
+`VITE_SUPABASE_ANON_KEY` for production builds.
+
+Build all pages with `npm run build`.
