@@ -1,147 +1,216 @@
+import logging
 import os
-import uuid
-import stripe
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from .auth_utils import get_current_user, get_current_admin, supabase_admin
 from pydantic import BaseModel
-from src.billing.credits import debit_analysis_credit, refund_analysis_credit
+import stripe
+
+from .auth_utils import get_current_admin, get_current_user, supabase_admin
+from src.billing.credits import (
+    adjust_project_credits,
+    credit_project_purchase,
+    normalize_project_code,
+)
+
 
 router = APIRouter()
+LOGGER = logging.getLogger(__name__)
 
-# Initialize Stripe
 stripe.api_key = os.environ.get("STRIPE_API_KEY", "placeholder")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+BASIM_FRONTEND_URL = os.environ.get("BASIM_FRONTEND_URL", "").rstrip("/")
+
 
 class CreditAdjustment(BaseModel):
     project_code: str
     amount: int
     description: str
 
+
+def _project_code(value: str) -> str:
+    try:
+        return normalize_project_code(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _company_id(user: dict) -> str:
+    company_id = user.get("company_id")
+    if not company_id:
+        raise HTTPException(
+            status_code=403,
+            detail="User is not assigned to a company",
+        )
+    return str(company_id)
+
+
+def _get_project(project_code: str) -> dict | None:
+    response = (
+        supabase_admin.table("projects")
+        .select("*")
+        .eq("project_code", project_code)
+        .execute()
+    )
+    return response.data[0] if response.data else None
+
+
+def _assert_project_access(project: dict, user: dict) -> None:
+    if user.get("is_admin"):
+        return
+    if project["company_id"] != _company_id(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized to access this project",
+        )
+
+
+def _checkout_return_url(
+    request: Request,
+    status_value: str,
+    project_code: str,
+) -> str:
+    origin = BASIM_FRONTEND_URL or request.headers.get(
+        "origin",
+        "https://basim.innealta.com.au",
+    ).rstrip("/")
+    query = urlencode(
+        {"checkout": status_value, "project_code": project_code}
+    )
+    return f"{origin}/billing.html?{query}"
+
+
 @router.get("/balance/{project_code}")
 def get_balance(project_code: str, user: dict = Depends(get_current_user)):
-    """Fetch the credit balance for a project (user must belong to same company)."""
-    # 1. Verify project belongs to user's company
-    proj_resp = supabase_admin.table('projects').select('*').eq('project_code', project_code).execute()
-    if not proj_resp.data:
-        # Auto-register new project codes on search
-        supabase_admin.table('projects').insert({
-            'project_code': project_code,
-            'company_id': user['company_id'],
-            'credit_balance': 0
-        }).execute()
-        return {"project_code": project_code, "credit_balance": 0}
-    
-    project = proj_resp.data[0]
-    if project['company_id'] != user['company_id'] and not user.get('is_admin'):
-        raise HTTPException(status_code=403, detail="Not authorized to view this project")
-        
-    return {"project_code": project_code, "credit_balance": project['credit_balance']}
+    """Fetch a company-owned project's credit balance without mutating it."""
+    normalized = _project_code(project_code)
+    project = _get_project(normalized)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _assert_project_access(project, user)
+    return {
+        "project_code": normalized,
+        "credit_balance": project["credit_balance"],
+    }
+
 
 @router.post("/checkout/{project_code}")
-def create_checkout_link(project_code: str, request: Request, user: dict = Depends(get_current_user)):
-    """Generates a Stripe checkout link to purchase 1000 credits for $100."""
-    # Verify authorization
-    proj_resp = supabase_admin.table('projects').select('*').eq('project_code', project_code).execute()
-    if not proj_resp.data:
-        # Create project entry if it doesn't exist
-        supabase_admin.table('projects').insert({
-            'project_code': project_code,
-            'company_id': user['company_id'],
-            'credit_balance': 0
-        }).execute()
-    elif proj_resp.data[0]['company_id'] != user['company_id'] and not user.get('is_admin'):
-        raise HTTPException(status_code=403, detail="Not authorized")
+def create_checkout_link(
+    project_code: str,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    """Create a Stripe Checkout session for 1,000 project credits."""
+    normalized = _project_code(project_code)
+    company_id = _company_id(user)
+    project = _get_project(normalized)
+    if project is None:
+        supabase_admin.table("projects").insert(
+            {
+                "project_code": normalized,
+                "company_id": company_id,
+                "credit_balance": 0,
+            }
+        ).execute()
+    else:
+        _assert_project_access(project, user)
 
     try:
-        # Get the origin from the request to redirect back to the correct frontend URL
-        origin = request.headers.get("origin", "https://basim-frontend.onrender.com")
-        
         checkout_session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{
-                'price_data': {
-                    'currency': 'aud',
-                    'product_data': {
-                        'name': '1,000 BaSIM Simulation Credits',
+            payment_method_types=["card"],
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "aud",
+                        "product_data": {
+                            "name": "1,000 BaSIM Simulation Credits",
+                        },
+                        "unit_amount": 10000,
                     },
-                    'unit_amount': 10000, # $100.00 in cents
-                },
-                'quantity': 1,
-            }],
-            mode='payment',
-            success_url=f'{origin}/billing',
-            cancel_url=f'{origin}/billing',
-            client_reference_id=project_code,
+                    "quantity": 1,
+                }
+            ],
+            mode="payment",
+            success_url=_checkout_return_url(
+                request,
+                "success",
+                normalized,
+            ),
+            cancel_url=_checkout_return_url(
+                request,
+                "cancelled",
+                normalized,
+            ),
+            client_reference_id=normalized,
             metadata={
-                'project_code': project_code,
-                'user_id': user['id']
-            }
+                "project_code": normalized,
+                "user_id": user["id"],
+            },
         )
         return {"payment_url": checkout_session.url}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        LOGGER.exception("Failed to create Stripe checkout for %s", normalized)
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to create checkout",
+        ) from exc
+
 
 @router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
-    """Handle Stripe webhooks (specifically checkout.session.completed)."""
-    payload = await request.body()
-    sig_header = request.headers.get('stripe-signature')
+    """Verify Stripe events and idempotently credit completed purchases."""
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="Stripe webhook is not configured",
+        )
+    signature = request.headers.get("stripe-signature")
+    if not signature:
+        raise HTTPException(status_code=400, detail="Missing Stripe signature")
 
     try:
-        # In production, verify the webhook signature
-        if STRIPE_WEBHOOK_SECRET:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, STRIPE_WEBHOOK_SECRET
-            )
-        else:
-            # Fallback for local testing without signature validation
-            import json
-            event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
-    except ValueError as e:
-        # Invalid payload
-        raise HTTPException(status_code=400, detail="Invalid payload")
-    except stripe.error.SignatureVerificationError as e:
-        # Invalid signature
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        event = stripe.Webhook.construct_event(
+            await request.body(),
+            signature,
+            STRIPE_WEBHOOK_SECRET,
+        )
+    except (ValueError, stripe.error.SignatureVerificationError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Stripe webhook",
+        ) from exc
 
-    # Handle the checkout.session.completed event
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
-        project_code = session.get('metadata', {}).get('project_code')
-        
-        if project_code:
-            # Add 1000 credits
-            _add_credits(project_code, 1000, 'purchase', description=f"Stripe Checkout {session['id']}")
-            
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        if session.get("payment_status") != "paid":
+            return {"status": "ignored", "reason": "payment_not_paid"}
+        metadata = session.get("metadata", {})
+        project_code = metadata.get("project_code")
+        user_id = metadata.get("user_id")
+        if not project_code or not user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Checkout metadata is incomplete",
+            )
+        credit_project_purchase(project_code, user_id, session["id"])
+
     return {"status": "ok"}
 
+
 @router.post("/admin/adjust_credits")
-def admin_adjust_credits(adjustment: CreditAdjustment, admin: dict = Depends(get_current_admin)):
-    """Admin endpoint to manually add or deduct credits."""
-    _add_credits(adjustment.project_code, adjustment.amount, 'manual_adjustment', admin['id'], adjustment.description)
-    return {"status": "success", "adjusted": adjustment.amount}
-
-def _add_credits(project_code: str, amount: int, type_str: str, user_id: str = None, description: str = None):
-    # Atomic update via RPC or read-update-write
-    # Using read-update-write here for simplicity, but RPC is safer for concurrency.
-    proj_resp = supabase_admin.table('projects').select('*').eq('project_code', project_code).execute()
-    if not proj_resp.data:
-        raise HTTPException(status_code=404, detail=f"Project '{project_code}' not found. Cannot add credits until the project is registered.")
-        
-    current_balance = proj_resp.data[0]['credit_balance']
-    new_balance = current_balance + amount
-    
-    # 1. Update balance
-    supabase_admin.table('projects').update({'credit_balance': new_balance}).eq('project_code', project_code).execute()
-    
-    # 2. Record transaction
-    tx = {
-        'project_code': project_code,
-        'amount': amount,
-        'type': type_str,
-        'description': description
+def admin_adjust_credits(
+    adjustment: CreditAdjustment,
+    admin: dict = Depends(get_current_admin),
+):
+    """Atomically add or deduct credits as an administrator."""
+    balance = adjust_project_credits(
+        adjustment.project_code,
+        str(admin["id"]),
+        adjustment.amount,
+        adjustment.description,
+    )
+    return {
+        "status": "success",
+        "adjusted": adjustment.amount,
+        "balance": balance,
     }
-    if user_id:
-        tx['user_id'] = user_id
-
-    supabase_admin.table('transactions').insert(tx).execute()

@@ -21,6 +21,8 @@ services:
           property: connectionString
       - key: JOB_TTL_SECONDS
         value: "86400"
+      - key: BASIM_FRONTEND_URL
+        value: https://basim.innealta.com.au
       - key: STRIPE_API_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET

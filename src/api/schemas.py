@@ -55,6 +55,8 @@ class HydraulicStructureInput(BaseModel):
 
 class DesignAnalysisRequest(BaseModel):
     project_code: Optional[str] = None
+    project_name: Optional[str] = Field(None, min_length=1, max_length=120)
+    scenario_name: Optional[str] = Field(None, min_length=1, max_length=120)
     latitude: float = Field(-31.95, ge=-44.0, le=-10.0)
     longitude: float = Field(115.86, ge=112.0, le=154.0)
     catchments: list[CatchmentInput] = Field(
@@ -90,6 +92,8 @@ class DesignAnalysisRequest(BaseModel):
 
 class CloggingAnalysisRequest(BaseModel):
     project_code: Optional[str] = None
+    project_name: Optional[str] = Field(None, min_length=1, max_length=120)
+    scenario_name: Optional[str] = Field(None, min_length=1, max_length=120)
     latitude: float = Field(ge=-44.0, le=-10.0)
     longitude: float = Field(ge=112.0, le=154.0)
     catchments: list[CatchmentInput]

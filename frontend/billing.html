@@ -79,6 +79,13 @@
       try {
         const response = await fetch(`${apiBase}/api/billing/balance/${encodeURIComponent(projectCode)}`, { headers: await headers() });
         const body = await response.json();
+        if (response.status === 404) {
+          balanceValue.textContent = "0";
+          balance.hidden = false;
+          buyButton.disabled = false;
+          message.textContent = "New project code. It will be registered when checkout starts.";
+          return;
+        }
         if (!response.ok) throw new Error(body.detail || "Unable to load balance");
         balanceValue.textContent = body.credit_balance.toLocaleString();
         balance.hidden = false;
@@ -106,6 +113,15 @@
 
     document.getElementById("check-balance").addEventListener("click", checkBalance);
     buyButton.addEventListener("click", buyCredits);
+    const query = new URLSearchParams(window.location.search);
+    const returnedProjectCode = query.get("project_code");
+    if (returnedProjectCode) projectInput.value = returnedProjectCode;
+    if (query.get("checkout") === "success") {
+      message.textContent = "Payment received. Credits may take a few seconds to appear.";
+      if (returnedProjectCode) checkBalance();
+    } else if (query.get("checkout") === "cancelled") {
+      message.textContent = "Checkout was cancelled. No charge was made.";
+    }
     headers().catch(() => {});
   </script>
 </body>

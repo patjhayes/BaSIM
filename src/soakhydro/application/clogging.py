@@ -23,6 +23,8 @@ ProgressCallback = Callable[[dict[str, Any]], None]
 
 
 class CloggingRequest(BaseModel):
+    project_name: Optional[str] = None
+    scenario_name: Optional[str] = None
     latitude: float
     longitude: float
     catchments: list[CatchmentInput]
@@ -63,7 +65,9 @@ def prepare_clogging_analysis(request: CloggingRequest) -> dict[str, Any]:
             ae_ps=(design_aep,),
             durations_minutes=DEFAULT_DURATIONS_MIN,
         ),
-        additional_metadata={"project_name": "Clogging Assessment"},
+        additional_metadata={
+            "project_name": request.project_name or "Clogging Assessment"
+        },
     )
     report = run_full_pipeline(
         project=project,
@@ -237,4 +241,9 @@ def run_clogging_analysis(
                     "done": True,
                 }
             )
-    return {"timeline": timeline}
+    result = {"timeline": timeline}
+    if request.project_name:
+        result["project_name"] = request.project_name
+    if request.scenario_name:
+        result["scenario_name"] = request.scenario_name
+    return result

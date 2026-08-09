@@ -37,9 +37,9 @@ Copy-Item .env.example .env
 ```
 
 Populate the Supabase, Stripe, and Vite values in `.env`. Apply
-`database_schema.sql`, followed by `migrations/002_analysis_credits.sql`, to the
-Supabase database. Migration 002 supplies atomic, idempotent one-credit debit
-and refund functions linked to each analysis job UUID.
+`database_schema.sql`, followed by `migrations/002_analysis_credits.sql` and
+`migrations/003_billing_hardening.sql`, to the Supabase database. The migrations
+supply atomic, idempotent analysis debit/refund and Stripe purchase functions.
 
 ## Run Locally
 
@@ -105,7 +105,10 @@ commit and fixture regeneration command.
 
 `render.yaml` provisions the static frontend, FastAPI backend, Celery worker,
 and Redis. Configure all `sync: false` environment variables in Render before
-deployment and apply the database migrations first.
+deployment and apply the database migrations first. Configure the Stripe
+webhook endpoint as `/api/billing/webhook/stripe`, subscribe it to
+`checkout.session.completed`, and set its signing secret as
+`STRIPE_WEBHOOK_SECRET` on the backend service.
 
 Live ARR/BoM access retains the vendored GAH cache and local fallback behavior.
 A production-approved live feed or provisioned dataset remains a release gate

@@ -44,6 +44,8 @@ class HydraulicStructureInput(BaseModel):
 
 
 class DesignRequest(BaseModel):
+    project_name: Optional[str] = None
+    scenario_name: Optional[str] = None
     latitude: float = Field(-31.95, ge=-44.0, le=-10.0)
     longitude: float = Field(115.86, ge=112.0, le=154.0)
     catchments: list[CatchmentInput] = Field(
@@ -135,7 +137,9 @@ def run_design_analysis(
             ae_ps=ae_ps,
             durations_minutes=tuple(request.durations_minutes),
         ),
-        additional_metadata={"project_name": "GAH-3D Basin Engine"},
+        additional_metadata={
+            "project_name": request.project_name or "GAH-3D Basin Engine"
+        },
     )
     report = run_full_pipeline(
         project=project,
@@ -356,7 +360,7 @@ def run_design_analysis(
                 f"(overtops, ~{overflow_m3:.1f} m3 above crest)."
             )
 
-    return {
+    result = {
         "project_name": report.project_name,
         "runoff_table": runoff_table,
         "basin_geometry": {
@@ -386,3 +390,6 @@ def run_design_analysis(
         ),
         "climate_epoch": request.climate_epoch,
     }
+    if request.scenario_name:
+        result["scenario_name"] = request.scenario_name
+    return result

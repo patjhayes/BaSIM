@@ -15,7 +15,11 @@ from src.api.schemas import (
     DesignAnalysisRequest,
     JobSubmissionResponse,
 )
-from src.billing.credits import debit_analysis_credit, refund_analysis_credit
+from src.billing.credits import (
+    debit_analysis_credit,
+    normalize_project_code,
+    refund_analysis_credit,
+)
 from src.jobs.store import JobStore, get_job_store
 from src.worker.celery_app import celery_app
 
@@ -82,6 +86,13 @@ def submit_analysis_job(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="project_code is required for commercial users",
             )
+        try:
+            project_code = normalize_project_code(project_code)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
         company_id = user.get("company_id")
         if not company_id:
             raise HTTPException(

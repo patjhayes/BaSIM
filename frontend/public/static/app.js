@@ -668,6 +668,8 @@ async function runSimulation() {
 
   const body = {
     project_code: document.getElementById("inp-project-code").value.trim() || null,
+    project_name: document.getElementById("inp-project-name").value.trim() || null,
+    scenario_name: document.getElementById("inp-scenario-name").value.trim() || null,
     latitude: parseFloat(document.getElementById("inp-lat").value),
     longitude: parseFloat(document.getElementById("inp-lng").value),
     catchments: catchments,
@@ -1383,6 +1385,9 @@ async function runCloggingAnalysis() {
     const payload = {
         // Reuse the EXACT design-run parameters so year 0 reproduces the
         // unclogged assessment (same U, groundwater levels, design AEP, K, etc.).
+      project_code: lastSimRequest.project_code,
+      project_name: lastSimRequest.project_name,
+      scenario_name: lastSimRequest.scenario_name,
         latitude: lastSimRequest.latitude,
         longitude: lastSimRequest.longitude,
         catchments: lastSimRequest.catchments,
@@ -1956,6 +1961,8 @@ function generateReport() {
     const baseAq = document.getElementById("inp-base-aquifer-lvl").value;
     const depthToGw = (parseFloat(invertLvl) - parseFloat(gwl));
     const ccLabel = simulationData.climate_scenario_label || "Historical";
+    const scenarioName = simulationData.scenario_name || "Scenario 1";
+    const projectCode = document.getElementById("inp-project-code").value.trim() || "Not specified";
 
     // ── Title ──
     doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.setTextColor(...GREEN);
@@ -1963,6 +1970,7 @@ function generateReport() {
     doc.setFontSize(12); doc.setTextColor(...INK);
     doc.text(simulationData.project_name || "Infiltration Basin", margin, y); y += 16;
     doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+    doc.text(`Scenario: ${scenarioName}  |  Project code: ${projectCode}`, margin, y); y += 12;
     doc.text(`Generated ${new Date().toLocaleString()}  |  Climate scenario: ${ccLabel}`, margin, y);
     y += 18; doc.setTextColor(...INK);
 

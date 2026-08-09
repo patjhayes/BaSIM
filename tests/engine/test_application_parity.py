@@ -6,6 +6,7 @@ from pathlib import Path
 from soakhydro.application.clogging import run_clogging_analysis
 from soakhydro.application.design import run_design_analysis
 from soakhydro.config import DEFAULT_DURATIONS_MIN
+from src.api.schemas import CloggingAnalysisRequest, DesignAnalysisRequest
 
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "gah_baseline"
@@ -30,6 +31,32 @@ def test_clogging_result_matches_pinned_gah_source() -> None:
     actual = run_clogging_analysis(_fixture("clogging_request.json"))
 
     assert _json_normalize(actual) == _fixture("clogging_result.json")
+
+
+def test_project_metadata_is_accepted_and_propagated() -> None:
+    design_request = _fixture("design_request.json")
+    design_request.update(
+        {
+            "project_name": "Harbour Basin Upgrade",
+            "scenario_name": "Existing Conditions",
+        }
+    )
+    design_contract = DesignAnalysisRequest.model_validate(design_request)
+    design_result = run_design_analysis(design_contract.model_dump())
+
+    clogging_request = _fixture("clogging_request.json")
+    clogging_request.update(
+        {
+            "project_name": "Harbour Basin Upgrade",
+            "scenario_name": "Year 10 Clogging",
+        }
+    )
+    clogging_contract = CloggingAnalysisRequest.model_validate(clogging_request)
+
+    assert design_result["project_name"] == "Harbour Basin Upgrade"
+    assert design_result["scenario_name"] == "Existing Conditions"
+    assert clogging_contract.project_name == "Harbour Basin Upgrade"
+    assert clogging_contract.scenario_name == "Year 10 Clogging"
 
 
 def test_clogging_year_zero_matches_equivalent_clean_design() -> None:
