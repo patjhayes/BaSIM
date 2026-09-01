@@ -44,6 +44,8 @@ def test_authenticated_user_does_not_require_profile(monkeypatch) -> None:
         "email": "engineer@agency.gov.au",
         "company_id": None,
         "is_admin": False,
+        "eula_version": None,
+        "eula_accepted_at": None,
     }
 
 

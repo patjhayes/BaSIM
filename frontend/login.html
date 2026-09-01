@@ -45,6 +45,11 @@
             <button class="link-button" onclick="forgotPassword()">Forgot password?</button>
         </div>
 
+        <div class="input-group" style="display:flex;gap:.5rem;align-items:flex-start;font-size:.85rem">
+            <input type="checkbox" id="eula-agreement" style="width:auto;margin-top:.25rem" />
+            <label for="eula-agreement" style="margin:0">I have read and agree to the <a href="/eula.html" target="_blank">BaSIM End-User Licence Agreement</a>.</label>
+        </div>
+
         <div class="btn-group">
             <button id="btn-login" onclick="signIn()">Log In</button>
             <button id="btn-signup" onclick="signUp()">Sign Up</button>
@@ -55,6 +60,8 @@
         const errorBox = document.getElementById('error-box');
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
+        const eulaAgreement = document.getElementById('eula-agreement');
+        const EULA_VERSION = '2026-09-02-placeholder';
         const configuredValue = (candidate) =>
             candidate && !String(candidate).startsWith('%VITE_') ? String(candidate) : '';
         const SUPABASE_URL = configuredValue(window.BASIM_CONFIG.supabaseUrl);
@@ -103,10 +110,20 @@
         // 4. Signup Logic
         async function signUp() {
             if (!supabaseClient) return;
+            if (!eulaAgreement.checked) {
+                showMessage('You must agree to the BaSIM End-User Licence Agreement to create an account.', true);
+                return;
+            }
             showMessage("Creating account...");
             const { error } = await supabaseClient.auth.signUp({
                 email: emailInput.value,
                 password: passwordInput.value,
+                options: {
+                    data: {
+                        eula_accepted: true,
+                        eula_version: EULA_VERSION,
+                    },
+                },
             });
 
             if (error) {

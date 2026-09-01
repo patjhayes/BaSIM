@@ -10,6 +10,8 @@ polls durable job status, and retrieves completed results.
 - `billing.html`: project balances and Stripe checkout
 - `help.html`: technical reference
 - `login.html`: Supabase sign-in and account creation
+- `product.html`: public product and project-pricing information
+- `eula.html`: placeholder web-service EULA
 
 ## Setup
 
@@ -23,3 +25,7 @@ The dev server runs at `http://127.0.0.1:5174` and proxies `/api` to
 `VITE_SUPABASE_ANON_KEY` for production builds.
 
 Build all pages with `npm run build`.
+
+Custom inflows are previewed through the authenticated multipart endpoint before
+analysis submission. The backend accepts CSV and TS1 files only; configured
+limits are 20 files, 5 MB per file, and 100,000 rows per file.

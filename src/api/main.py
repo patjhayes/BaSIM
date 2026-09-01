@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.billing import router as billing_router
+from src.api.legal import router as legal_router
 from src.api.routes.analyses import router as analyses_router
 from src.api.routes.jobs import router as jobs_router
 
@@ -37,6 +38,7 @@ app.add_middleware(
 )
 
 app.include_router(billing_router, prefix="/api/billing")
+app.include_router(legal_router)
 app.include_router(analyses_router)
 app.include_router(jobs_router)
 

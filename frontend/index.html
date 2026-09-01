@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GAH-3D Web Application</title>
+  <title>BaSIM | Infiltration Basin Design</title>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -47,13 +47,15 @@
   <div class="brand">
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/></svg>
     <div>
-      <h1>GAH-3D</h1>
-      <span>Green-Ampt-Hantush 3D Basin Engine</span>
+      <h1>BaSIM</h1>
+      <span>Infiltration Basin Design and Clogging Assessment</span>
     </div>
   </div>
   <nav>
+    <a href="/product.html" style="margin-right:.5rem">About BaSIM</a>
     <a href="/help.html" target="_blank" style="margin-right:.5rem">Technical Reference</a>
     <a href="/billing.html" style="margin-right:.5rem">Billing</a>
+    <a href="/eula.html" target="_blank" style="margin-right:.5rem">Terms</a>
     <a href="https://innealta.com.au" target="_blank">innealta.com.au</a>
     <a href="#" id="auth-link" style="margin-left:1rem;color:#ef4444">Logout</a>
   </nav>
@@ -77,8 +79,9 @@
         <input type="text" id="inp-scenario-name" value="Scenario 1" maxlength="120" autocomplete="off" />
       </div>
       <div class="field">
-        <label>Project Code <span class="info-bubble" title="Required for commercial accounts; government and Innealta accounts are free-tier.">&#9432;</span></label>
+        <label>Project Code <span class="info-bubble" title="Credits are owned by the project. Commercial design and clogging submissions use one credit; authenticated .gov.au and Innealta accounts have unlimited free access.">&#9432;</span></label>
         <input type="text" id="inp-project-code" placeholder="e.g. PRJ-2026-001" maxlength="80" autocomplete="off" />
+        <p style="font-size:.75rem;color:var(--muted);margin:.35rem 0 0">$10 AUD = 1,000 simulations; $100 AUD = 10,000 simulations. <a href="/product.html">Pricing and eligibility</a></p>
       </div>
     </div>
 
@@ -108,6 +111,27 @@
     <!-- Storm settings -->
     <div class="card">
       <h3>🌧️ Storm Settings</h3>
+      <div class="field">
+        <label>Inflow source</label>
+        <label style="display:block;font-size:.82rem"><input type="radio" name="inflow-source" value="generated" checked /> Generate runoff from ARR/BoM rainfall</label>
+        <label style="display:block;font-size:.82rem;margin-top:.3rem"><input type="radio" name="inflow-source" value="external" /> Route uploaded inflow hydrographs</label>
+      </div>
+      <div id="external-hydrograph-input" hidden>
+        <div class="field">
+          <label for="inp-external-hydrographs">Hydrograph files</label>
+          <input id="inp-external-hydrographs" type="file" accept=".csv,.ts1,text/csv,text/plain" multiple />
+          <p style="font-size:.75rem;color:var(--muted);margin:.35rem 0 0">Each filename must contain exactly one duration, for example <code>event_0030m.csv</code> or <code>model_24h.ts1</code>. Leading zeros are accepted.</p>
+        </div>
+        <div class="row">
+          <div class="field"><label for="inp-hydro-time-column">CSV time column</label><input id="inp-hydro-time-column" type="text" value="time" /></div>
+          <div class="field"><label for="inp-hydro-flow-column">CSV/TS1 flow column</label><input id="inp-hydro-flow-column" type="text" value="flow" /></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="inp-hydro-time-unit">CSV time unit</label><select id="inp-hydro-time-unit"><option value="minutes">Minutes</option><option value="hours">Hours</option></select></div>
+          <div class="field"><label for="inp-hydro-flow-unit">CSV flow unit</label><select id="inp-hydro-flow-unit"><option value="m3/s">m3/s</option><option value="L/s">L/s</option></select></div>
+        </div>
+        <div id="external-hydrograph-status" style="font-size:.78rem;color:var(--muted)"></div>
+      </div>
       <div class="field">
         <label>AEP to analyse</label>
         <select id="inp-aeps">

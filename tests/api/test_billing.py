@@ -93,6 +93,28 @@ def test_checkout_registers_project_and_returns_to_static_page(monkeypatch) -> N
         "https://basim.innealta.com.au/billing.html?"
         "checkout=cancelled&project_code=PROJECT-1"
     )
+    assert checkout["line_items"][0]["price_data"]["unit_amount"] == 1000
+    assert checkout["metadata"]["credit_package"] == "starter"
+    assert checkout["metadata"]["credits"] == "1000"
+
+
+def test_checkout_uses_selected_package(monkeypatch) -> None:
+    supabase = SupabaseStub({"company_id": "company-1", "credit_balance": 0})
+    create_session = Mock(return_value=SimpleNamespace(url="https://stripe.test/pay"))
+    monkeypatch.setattr(billing, "supabase_admin", supabase)
+    monkeypatch.setattr(billing.stripe.checkout.Session, "create", create_session)
+
+    billing.create_checkout_link(
+        "project-1",
+        _request(),
+        package="standard",
+        user={"id": "user-1", "company_id": "company-1", "is_admin": False},
+    )
+
+    checkout = create_session.call_args.kwargs
+    assert checkout["line_items"][0]["price_data"]["unit_amount"] == 10000
+    assert checkout["metadata"]["credit_package"] == "standard"
+    assert checkout["metadata"]["credits"] == "10000"
 
 
 def test_webhook_requires_configuration(monkeypatch) -> None:
@@ -114,6 +136,8 @@ def test_paid_webhook_uses_session_id_for_idempotent_credit(monkeypatch) -> None
                 "metadata": {
                     "project_code": "PROJECT-1",
                     "user_id": "user-1",
+                    "credit_package": "starter",
+                    "credits": "1000",
                 },
             }
         },
@@ -137,4 +161,43 @@ def test_paid_webhook_uses_session_id_for_idempotent_credit(monkeypatch) -> None
     response = asyncio.run(billing.stripe_webhook(request))
 
     assert response == {"status": "ok"}
-    credit.assert_called_once_with("PROJECT-1", "user-1", "cs_test_123")
+    credit.assert_called_once_with(
+        "PROJECT-1", "user-1", "cs_test_123", amount=1000
+    )
+
+
+def test_paid_webhook_credits_selected_package(monkeypatch) -> None:
+    event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_test_10000",
+                "payment_status": "paid",
+                "metadata": {
+                    "project_code": "PROJECT-1",
+                    "user_id": "user-1",
+                    "credit_package": "standard",
+                    "credits": "10000",
+                },
+            }
+        },
+    }
+    credit = Mock(return_value=10_000)
+    monkeypatch.setattr(billing, "STRIPE_WEBHOOK_SECRET", "whsec_test")
+    monkeypatch.setattr(billing.stripe.Webhook, "construct_event", Mock(return_value=event))
+    monkeypatch.setattr(billing, "credit_project_purchase", credit)
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/billing/webhook/stripe",
+            "headers": [(b"stripe-signature", b"signed")],
+        },
+        receive=AsyncMock(return_value={"type": "http.request", "body": b"{}"}),
+    )
+
+    asyncio.run(billing.stripe_webhook(request))
+
+    credit.assert_called_once_with(
+        "PROJECT-1", "user-1", "cs_test_10000", amount=10_000
+    )

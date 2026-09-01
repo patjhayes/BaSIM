@@ -13,6 +13,7 @@ from .common import (
     summarise_timeseries,
     timeseries_to_dict,
 )
+from ..external_hydrographs import hydrograph_result_from_external
 from ..config import DEFAULT_DURATIONS_MIN
 from ..hydraulics.routing import basin_storage_m3_at_depth, route_through_basin
 from ..models.common import AEP, Coordinate, Project, ProjectSettings
@@ -51,9 +52,26 @@ class CloggingRequest(BaseModel):
     use_live_data: bool = False
     climate_scenario: Optional[str] = None
     climate_epoch: Optional[int] = None
+    external_hydrographs: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def prepare_clogging_analysis(request: CloggingRequest) -> dict[str, Any]:
+    if request.external_hydrographs:
+        return {
+            "external_hydrographs": [
+                (external, hydrograph_result_from_external(external, index))
+                for index, external in enumerate(request.external_hydrographs)
+            ],
+            "initial_k": request.vertical_k_mm_per_hr / 1000.0 / 3600.0 * 86400.0,
+            "initial_l": 0.001,
+            "num_years": max(1, request.clogging_years),
+            "max_capacity": basin_storage_m3_at_depth(
+                base_length_m=request.basin_base_length_m,
+                base_width_m=request.basin_base_width_m,
+                side_slope_ratio=request.basin_side_slope_ratio,
+                depth_m=request.basin_max_depth_m,
+            ),
+        }
     design_aep = AEP.from_percent(request.design_aep_percent)
     project = Project(
         coordinate=Coordinate(
@@ -109,6 +127,11 @@ def route_clogging_year(
             initial_k - request.final_k_cl_m_per_day
         ) * fraction
     current_l = initial_l + (request.final_l_cl_m - initial_l) * fraction
+
+    if setup.get("external_hydrographs"):
+        return _route_external_clogging_year(
+            request, setup, year, current_k, current_l, fraction
+        )
 
     routed_by_duration = {}
     for hydrograph_key, hydrograph in setup["report"].runoff_results.items():
@@ -192,6 +215,71 @@ def route_clogging_year(
         "drawdown_summary": drawdown_summary,
         "timeseries": timeseries_result,
         "timeseries_drawdown": drawdown_timeseries_result,
+    }
+
+
+def _route_external_clogging_year(
+    request: CloggingRequest,
+    setup: dict[str, Any],
+    year: int,
+    current_k: float,
+    current_l: float,
+    fraction: float,
+) -> dict[str, Any]:
+    routed = []
+    for external, hydrograph in setup["external_hydrographs"]:
+        timeseries = route_through_basin(
+            hydrograph=hydrograph,
+            base_length_m=request.basin_base_length_m,
+            base_width_m=request.basin_base_width_m,
+            side_slope_ratio=request.basin_side_slope_ratio,
+            max_depth_m=request.basin_max_depth_m,
+            vertical_k_mm_per_hr=request.vertical_k_mm_per_hr,
+            horizontal_k_mm_per_hr=request.horizontal_k_mm_per_hr,
+            design_drain_time_hours=72.0,
+            soil_moderation_factor=request.soil_moderation_factor,
+            initial_moisture_deficit=request.initial_moisture_deficit,
+            capillary_suction_head_m=request.capillary_suction_head_m,
+            specific_yield=request.specific_yield,
+            surface_level_m_ahd=request.surface_level_m_ahd,
+            design_gwl_m_ahd=request.design_gwl_m_ahd,
+            base_aquifer_level_m_ahd=request.base_aquifer_level_m_ahd,
+            use_clogged_layer=fraction > 0.0,
+            clogged_k_m_per_day=current_k,
+            clogged_thickness_m=current_l,
+            basin_side_infil_enabled=request.basin_side_infil_enabled,
+            hydraulic_structures=None,
+        )
+        routed.append((external, hydrograph, timeseries))
+
+    def summary(item: tuple[dict[str, Any], Any, Any]) -> dict[str, Any]:
+        external, hydrograph, timeseries = item
+        result = summarise_timeseries(
+            timeseries,
+            len(hydrograph.discharge_cms) * hydrograph.timestep_minutes,
+            hydrograph.duration_minutes,
+            hydrograph.pattern_rank,
+            setup["max_capacity"],
+        )
+        result["source_filename"] = external["filename"]
+        return result
+
+    depth_event = max(routed, key=lambda item: max(item[2].depth_m))
+    drawdown_event = max(routed, key=lambda item: summary(item)["drain_time_hours"])
+    depth_summary = summary(depth_event)
+    drawdown_summary = summary(drawdown_event)
+    return {
+        "year": year,
+        "k_cl_m_per_day": current_k,
+        "l_cl_m": current_l,
+        "peak_depth_m": depth_summary["peak_depth_m"],
+        "drain_time_hours": drawdown_summary["drain_time_hours"],
+        "spilled": depth_summary["spilled"],
+        "depth_summary": depth_summary,
+        "drawdown_summary": drawdown_summary,
+        "timeseries": timeseries_to_dict(depth_event[2]),
+        "timeseries_drawdown": timeseries_to_dict(drawdown_event[2]),
+        "source_filename": depth_event[0]["filename"],
     }
 
 

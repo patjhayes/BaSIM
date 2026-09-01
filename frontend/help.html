@@ -272,6 +272,11 @@ $$Q_n = \frac{A}{360}\sum_i h_i\,I_{n-i}$$
 <!-- =================================================================== -->
 <h2 id="storm">5. Storm Settings (AEP &amp; Durations)</h2>
 
+<h3>5.0 Uploaded inflow hydrographs</h3>
+<p>Choose <strong>Route uploaded inflow hydrographs</strong> when an external model has already produced basin inflows. Upload one or more <code>.csv</code> or <code>.ts1</code> files; BaSIM routes every accepted file and identifies the controlling response.</p>
+<p>Each filename must contain exactly one positive duration token: <code>event_0030m.csv</code> and <code>model_24h.ts1</code> are accepted, including any leading zeros. Files without a duration, with zero duration, or with more than one duration token are rejected.</p>
+<p>CSV files require selected time and flow columns plus explicit units. TS1 files read declared time and flow units. Times must start at zero, be strictly increasing, and use an even timestep. Flows must be finite and non-negative. Uploaded mode bypasses ARR/BoM rainfall generation.</p>
+
 <h3>5.1 Annual Exceedance Probability (AEP)</h3>
 <div class="param"><strong>Input:</strong> <code>aep_percentages</code> (multi-select: 63.2%, 50%, 20%, 10%, 5%, 2%, 1%).</div>
 <p>The AEP is the probability of a given rainfall depth being exceeded in any one year. Select all the events you want to analyse. The <strong>design AEP</strong> defaults to the rarest (smallest percentage) selected &mdash; this is the event the basin is sized to contain.</p>

@@ -7,9 +7,9 @@ import logging
 from typing import Any, Optional
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from src.api.auth_utils import get_current_user
+from src.api.legal import require_current_eula
 from src.api.schemas import (
     CloggingAnalysisRequest,
     DesignAnalysisRequest,
@@ -21,11 +21,14 @@ from src.billing.credits import (
     refund_analysis_credit,
 )
 from src.jobs.store import JobStore, get_job_store
+from src.soakhydro.external_hydrographs import parse_external_hydrograph
 from src.worker.celery_app import celery_app
 
 
 LOGGER = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analyses", tags=["analyses"])
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_UPLOAD_FILES = 20
 
 
 @lru_cache(maxsize=1)
@@ -63,6 +66,47 @@ def _refund_after_dispatch_failure(
         refund_analysis_credit(project_code, user_id, job_id)
     except Exception:
         LOGGER.exception("Failed to refund analysis job %s after dispatch failure", job_id)
+
+
+@router.post("/external-hydrographs/preview")
+async def preview_external_hydrographs(
+    files: list[UploadFile] = File(...),
+    time_column: Optional[str] = Form(None),
+    flow_column: Optional[str] = Form(None),
+    time_unit: Optional[str] = Form(None),
+    flow_unit: Optional[str] = Form(None),
+    user: dict = Depends(require_current_eula),
+) -> dict:
+    """Validate uploads and return JSON-safe hydrographs for a later job request."""
+    del user
+    if not files or len(files) > MAX_UPLOAD_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload between 1 and {MAX_UPLOAD_FILES} hydrograph files.",
+        )
+    hydrographs = []
+    for upload in files:
+        filename = upload.filename or ""
+        content = await upload.read(MAX_UPLOAD_BYTES + 1)
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"{filename}: file exceeds the 5 MB limit.",
+            )
+        try:
+            hydrographs.append(
+                parse_external_hydrograph(
+                    filename,
+                    content,
+                    time_column=time_column,
+                    flow_column=flow_column,
+                    time_unit=time_unit,
+                    flow_unit=flow_unit,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"{filename}: {exc}") from exc
+    return {"hydrographs": hydrographs}
 
 
 def submit_analysis_job(
@@ -141,7 +185,7 @@ def submit_analysis_job(
 @router.post("/design", response_model=JobSubmissionResponse, status_code=202)
 def submit_design(
     request: DesignAnalysisRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_current_eula),
     store: JobStore = Depends(job_store_dependency),
 ) -> JobSubmissionResponse:
     payload = request.model_dump(mode="json", exclude={"project_code"})
@@ -157,7 +201,7 @@ def submit_design(
 @router.post("/clogging", response_model=JobSubmissionResponse, status_code=202)
 def submit_clogging(
     request: CloggingAnalysisRequest,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_current_eula),
     store: JobStore = Depends(job_store_dependency),
 ) -> JobSubmissionResponse:
     payload = request.model_dump(mode="json", exclude={"project_code"})

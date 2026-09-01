@@ -93,6 +93,8 @@ def get_current_user(payload: dict = Security(verify_token)):
         "email": email,
         "company_id": profile.get("company_id"),
         "is_admin": profile.get("is_admin", False),
+        "eula_version": profile.get("eula_version"),
+        "eula_accepted_at": profile.get("eula_accepted_at"),
     }
 
 

@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     email TEXT NOT NULL,
     company_id TEXT REFERENCES public.companies(id) ON DELETE CASCADE,
     is_admin BOOLEAN DEFAULT FALSE,
+    eula_version TEXT,
+    eula_accepted_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -107,12 +109,20 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
 
     -- Insert profile
-    INSERT INTO public.profiles (id, email, company_id, is_admin)
+    INSERT INTO public.profiles (
+        id, email, company_id, is_admin, eula_version, eula_accepted_at
+    )
     VALUES (
         NEW.id, 
         NEW.email, 
         comp_id, 
-        CASE WHEN NEW.email = 'Patrick@innealta.com.au' THEN true ELSE false END
+        CASE WHEN NEW.email = 'Patrick@innealta.com.au' THEN true ELSE false END,
+           CASE WHEN NEW.raw_user_meta_data ->> 'eula_accepted' = 'true'
+                    AND NEW.raw_user_meta_data ->> 'eula_version' = '2026-09-02-placeholder'
+               THEN NEW.raw_user_meta_data ->> 'eula_version' ELSE NULL END,
+           CASE WHEN NEW.raw_user_meta_data ->> 'eula_accepted' = 'true'
+                    AND NEW.raw_user_meta_data ->> 'eula_version' = '2026-09-02-placeholder'
+             THEN timezone('utc'::text, now()) ELSE NULL END
     );
 
     RETURN NEW;

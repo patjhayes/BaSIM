@@ -13,6 +13,7 @@ from .common import (
     summarise_timeseries,
     timeseries_to_dict,
 )
+from ..external_hydrographs import hydrograph_result_from_external
 from ..hydraulics.routing import basin_storage_m3_at_depth, route_through_basin
 from ..models.common import AEP, Coordinate, Project, ProjectSettings
 from ..pipeline import DataRepository, run_full_pipeline
@@ -77,6 +78,7 @@ class DesignRequest(BaseModel):
     hydraulic_structures: list[HydraulicStructureInput] = Field(default_factory=list)
     climate_scenario: Optional[str] = None
     climate_epoch: Optional[int] = Field(None, ge=2030, le=2100)
+    external_hydrographs: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def _validate_request(request: DesignRequest) -> None:
@@ -103,6 +105,8 @@ def _validate_request(request: DesignRequest) -> None:
         and request.climate_epoch is None
     ):
         raise ValueError("climate_epoch is required when climate_scenario is set.")
+    if len(request.external_hydrographs) > 20:
+        raise ValueError("A maximum of 20 external hydrographs may be submitted.")
 
 
 def _emit(progress: Optional[ProgressCallback], event: dict[str, Any]) -> None:
@@ -118,6 +122,8 @@ def run_design_analysis(
         payload if isinstance(payload, DesignRequest) else DesignRequest.model_validate(payload)
     )
     _validate_request(request)
+    if request.external_hydrographs:
+        return _run_external_design(request, progress)
 
     design_aep_percent = request.design_aep_percent or min(request.aep_percentages)
     design_aep = AEP.from_percent(design_aep_percent)
@@ -393,3 +399,150 @@ def run_design_analysis(
     if request.scenario_name:
         result["scenario_name"] = request.scenario_name
     return result
+
+
+def _run_external_design(
+    request: DesignRequest,
+    progress: Optional[ProgressCallback],
+) -> dict[str, Any]:
+    routed = []
+    max_capacity = basin_storage_m3_at_depth(
+        base_length_m=request.basin_base_length_m or 1.0,
+        base_width_m=request.basin_base_width_m or 1.0,
+        side_slope_ratio=request.basin_side_slope_ratio or 0.0,
+        depth_m=request.basin_max_depth_m or 0.0,
+    )
+    for index, external in enumerate(request.external_hydrographs):
+        hydrograph = hydrograph_result_from_external(external, index)
+        _emit(
+            progress,
+            {
+                "phase": "routing",
+                "step": index,
+                "total": len(request.external_hydrographs),
+                "storm": external["filename"],
+            },
+        )
+        timeseries = route_through_basin(
+            hydrograph=hydrograph,
+            base_length_m=request.basin_base_length_m or 1.0,
+            base_width_m=request.basin_base_width_m or 1.0,
+            side_slope_ratio=request.basin_side_slope_ratio or 3.0,
+            max_depth_m=request.basin_max_depth_m or 1.0,
+            vertical_k_mm_per_hr=request.vertical_k_mm_per_hr,
+            horizontal_k_mm_per_hr=request.horizontal_k_mm_per_hr,
+            design_drain_time_hours=request.design_drain_time_hours,
+            soil_moderation_factor=request.soil_moderation_factor,
+            initial_moisture_deficit=request.initial_moisture_deficit or 0.2,
+            capillary_suction_head_m=request.capillary_suction_head_m or 0.15,
+            specific_yield=max(request.specific_yield or 0.25, 0.01),
+            surface_level_m_ahd=request.surface_level_m_ahd,
+            design_gwl_m_ahd=request.design_gwl_m_ahd,
+            base_aquifer_level_m_ahd=request.base_aquifer_level_m_ahd,
+            use_clogged_layer=request.basin_use_clogged_layer,
+            clogged_k_m_per_day=request.basin_clogged_k_m_per_day,
+            clogged_thickness_m=request.basin_clogged_thickness_m,
+            basin_side_infil_enabled=request.basin_side_infil_enabled,
+            hydraulic_structures=request.hydraulic_structures,
+        )
+        routed.append((external, hydrograph, timeseries))
+        _emit(
+            progress,
+            {
+                "phase": "routing",
+                "step": index + 1,
+                "total": len(request.external_hydrographs),
+                "storm": external["filename"],
+                "done": True,
+            },
+        )
+
+    def peak_depth(item: tuple[dict[str, Any], Any, Any]) -> float:
+        return max(item[2].depth_m) if item[2].depth_m else 0.0
+
+    depth_event = max(routed, key=peak_depth)
+    drawdown_event = max(
+        routed,
+        key=lambda item: summarise_timeseries(
+            item[2],
+            len(item[1].discharge_cms) * item[1].timestep_minutes,
+            item[1].duration_minutes,
+            item[1].pattern_rank,
+            max_capacity,
+        )["drain_time_hours"],
+    )
+
+    def summary(item: tuple[dict[str, Any], Any, Any]) -> dict[str, Any]:
+        external, hydrograph, timeseries = item
+        result = summarise_timeseries(
+            timeseries,
+            len(hydrograph.discharge_cms) * hydrograph.timestep_minutes,
+            hydrograph.duration_minutes,
+            hydrograph.pattern_rank,
+            max_capacity,
+        )
+        result["source_filename"] = external["filename"]
+        return result
+
+    depth_summary = summary(depth_event)
+    drawdown_summary = summary(drawdown_event)
+    warnings = []
+    for external, _, timeseries in routed:
+        peak = max(timeseries.depth_m) if timeseries.depth_m else 0.0
+        if peak > (request.basin_max_depth_m or 0.0) + 1e-6:
+            warnings.append(
+                f"{external['filename']}: peak depth {peak:.2f} m exceeds the basin maximum depth."
+            )
+    return {
+        "project_name": request.project_name or "BaSIM Project",
+        "runoff_table": [
+            {
+                "aep": "External inflow",
+                "duration_minutes": hydrograph.duration_minutes,
+                "pattern_rank": hydrograph.pattern_rank,
+                "peak_discharge_cms": round(hydrograph.peak_discharge_cms, 6),
+                "runoff_volume_m3": round(hydrograph.runoff_volume_m3, 3),
+                "time_to_peak_minutes": round(hydrograph.time_to_peak_minutes, 1),
+                "source_filename": external["filename"],
+            }
+            for external, hydrograph, _ in routed
+        ],
+        "basin_geometry": {
+            "base_length_m": request.basin_base_length_m,
+            "base_width_m": request.basin_base_width_m,
+            "side_slope_ratio": request.basin_side_slope_ratio,
+            "max_depth_m": request.basin_max_depth_m,
+            "use_clogged_layer": request.basin_use_clogged_layer,
+            "clogged_k_m_per_day": request.basin_clogged_k_m_per_day,
+            "clogged_thickness_m": request.basin_clogged_thickness_m,
+        },
+        "selected_model": GAH3D_MODEL_KEY,
+        "model_selection_reason": "GAH-3D routing of uploaded hydrographs.",
+        "model_runs": [{
+            "model_key": GAH3D_MODEL_KEY,
+            "label": GAH3D_MODEL_LABEL,
+            "depth_summary": depth_summary,
+            "drawdown_summary": drawdown_summary,
+            "timeseries": timeseries_to_dict(depth_event[2]),
+            "timeseries_drawdown": timeseries_to_dict(drawdown_event[2]),
+        }],
+        "basin_routing_times": {},
+        "basin_routing_depths": {},
+        "basin_routing_mound": {},
+        "basin_routing_infil": {},
+        "basin_routing_cum_infil": {},
+        "hyetographs": [],
+        "hydrographs": [
+            {
+                "key": external["filename"],
+                "timestep_minutes": hydrograph.timestep_minutes,
+                "discharge_cms": [round(value, 6) for value in hydrograph.discharge_cms],
+                "duration_minutes": hydrograph.duration_minutes,
+                "source_filename": external["filename"],
+            }
+            for external, hydrograph, _ in routed
+        ],
+        "external_hydrographs": request.external_hydrographs,
+        "warnings": warnings,
+        "climate_scenario_label": "External hydrographs",
+    }

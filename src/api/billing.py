@@ -7,6 +7,7 @@ from pydantic import BaseModel
 import stripe
 
 from .auth_utils import get_current_admin, get_current_user, supabase_admin
+from .legal import require_current_eula
 from src.billing.credits import (
     adjust_project_credits,
     credit_project_purchase,
@@ -20,6 +21,19 @@ LOGGER = logging.getLogger(__name__)
 stripe.api_key = os.environ.get("STRIPE_API_KEY", "placeholder")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 BASIM_FRONTEND_URL = os.environ.get("BASIM_FRONTEND_URL", "").rstrip("/")
+
+CREDIT_PACKAGES = {
+    "starter": {
+        "credits": 1_000,
+        "unit_amount": 1_000,
+        "label": "1,000 BaSIM Simulation Credits",
+    },
+    "standard": {
+        "credits": 10_000,
+        "unit_amount": 10_000,
+        "label": "10,000 BaSIM Simulation Credits",
+    },
+}
 
 
 class CreditAdjustment(BaseModel):
@@ -81,7 +95,7 @@ def _checkout_return_url(
 
 
 @router.get("/balance/{project_code}")
-def get_balance(project_code: str, user: dict = Depends(get_current_user)):
+def get_balance(project_code: str, user: dict = Depends(require_current_eula)):
     """Fetch a company-owned project's credit balance without mutating it."""
     normalized = _project_code(project_code)
     project = _get_project(normalized)
@@ -98,9 +112,13 @@ def get_balance(project_code: str, user: dict = Depends(get_current_user)):
 def create_checkout_link(
     project_code: str,
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_current_eula),
+    package: str = "starter",
 ):
-    """Create a Stripe Checkout session for 1,000 project credits."""
+    """Create a Stripe Checkout session for a fixed project-credit package."""
+    selected_package = CREDIT_PACKAGES.get(package)
+    if selected_package is None:
+        raise HTTPException(status_code=400, detail="Invalid credit package")
     normalized = _project_code(project_code)
     company_id = _company_id(user)
     project = _get_project(normalized)
@@ -123,9 +141,9 @@ def create_checkout_link(
                     "price_data": {
                         "currency": "aud",
                         "product_data": {
-                            "name": "1,000 BaSIM Simulation Credits",
+                            "name": selected_package["label"],
                         },
-                        "unit_amount": 10000,
+                        "unit_amount": selected_package["unit_amount"],
                     },
                     "quantity": 1,
                 }
@@ -145,6 +163,8 @@ def create_checkout_link(
             metadata={
                 "project_code": normalized,
                 "user_id": user["id"],
+                "credit_package": package,
+                "credits": str(selected_package["credits"]),
             },
         )
         return {"payment_url": checkout_session.url}
@@ -187,12 +207,19 @@ async def stripe_webhook(request: Request):
         metadata = session.get("metadata", {})
         project_code = metadata.get("project_code")
         user_id = metadata.get("user_id")
-        if not project_code or not user_id:
+        package = metadata.get("credit_package")
+        selected_package = CREDIT_PACKAGES.get(package or "")
+        if not project_code or not user_id or selected_package is None:
             raise HTTPException(
                 status_code=400,
                 detail="Checkout metadata is incomplete",
             )
-        credit_project_purchase(project_code, user_id, session["id"])
+        credit_project_purchase(
+            project_code,
+            user_id,
+            session["id"],
+            amount=selected_package["credits"],
+        )
 
     return {"status": "ok"}
 

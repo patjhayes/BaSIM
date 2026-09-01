@@ -10,6 +10,8 @@ export default defineConfig({
         billing: resolve(import.meta.dirname, 'billing.html'),
         help: resolve(import.meta.dirname, 'help.html'),
         login: resolve(import.meta.dirname, 'login.html'),
+        product: resolve(import.meta.dirname, 'product.html'),
+        eula: resolve(import.meta.dirname, 'eula.html'),
       },
     },
   },

@@ -53,6 +53,16 @@ class HydraulicStructureInput(BaseModel):
     pit_opening_ratio: Optional[float] = Field(0.5, gt=0, le=1)
 
 
+class ExternalHydrographInput(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    duration_minutes: int = Field(gt=0)
+    timestep_minutes: float = Field(gt=0)
+    time_minutes: list[float] = Field(min_length=2, max_length=100_000)
+    discharge_cms: list[float] = Field(min_length=2, max_length=100_000)
+    source_format: str
+    flow_column: str = Field(min_length=1, max_length=255)
+
+
 class DesignAnalysisRequest(BaseModel):
     project_code: Optional[str] = None
     project_name: Optional[str] = Field(None, min_length=1, max_length=120)
@@ -88,6 +98,7 @@ class DesignAnalysisRequest(BaseModel):
     hydraulic_structures: list[HydraulicStructureInput] = Field(default_factory=list)
     climate_scenario: Optional[str] = None
     climate_epoch: Optional[int] = Field(None, ge=2030, le=2100)
+    external_hydrographs: list[ExternalHydrographInput] = Field(default_factory=list, max_length=20)
 
 
 class CloggingAnalysisRequest(BaseModel):
@@ -120,6 +131,7 @@ class CloggingAnalysisRequest(BaseModel):
     use_live_data: bool = False
     climate_scenario: Optional[str] = None
     climate_epoch: Optional[int] = Field(None, ge=2030, le=2100)
+    external_hydrographs: list[ExternalHydrographInput] = Field(default_factory=list, max_length=20)
 
 
 class JobSubmissionResponse(BaseModel):

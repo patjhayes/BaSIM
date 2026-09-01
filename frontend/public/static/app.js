@@ -635,6 +635,42 @@ async function submitAnalysis(path, payload, onEvent) {
   }
 }
 
+function usingExternalHydrographs() {
+  return document.querySelector('input[name="inflow-source"]:checked')?.value === "external";
+}
+
+function wireExternalHydrographInput() {
+  const panel = document.getElementById("external-hydrograph-input");
+  document.querySelectorAll('input[name="inflow-source"]').forEach((input) => {
+    input.addEventListener("change", () => { panel.hidden = !usingExternalHydrographs(); });
+  });
+}
+
+async function previewExternalHydrographs() {
+  const files = Array.from(document.getElementById("inp-external-hydrographs").files || []);
+  if (!files.length) throw new Error("Select one or more CSV or TS1 hydrograph files.");
+  const status = document.getElementById("external-hydrograph-status");
+  status.textContent = "Validating hydrograph files...";
+  const form = new FormData();
+  files.forEach((file) => form.append("files", file));
+  form.append("time_column", document.getElementById("inp-hydro-time-column").value.trim());
+  form.append("flow_column", document.getElementById("inp-hydro-flow-column").value.trim());
+  form.append("time_unit", document.getElementById("inp-hydro-time-unit").value);
+  form.append("flow_unit", document.getElementById("inp-hydro-flow-unit").value);
+  const response = await fetch(apiUrl("/api/analyses/external-hydrographs/preview"), {
+    method: "POST",
+    headers: await authHeaders(),
+    body: form,
+  });
+  const body = await response.json().catch(() => ({ detail: response.statusText }));
+  if (!response.ok) throw new Error(body.detail || "Unable to validate hydrograph files.");
+  status.textContent = body.hydrographs.map((hydrograph) =>
+    `${hydrograph.filename}: ${hydrograph.duration_minutes} min, ${hydrograph.point_count} points`).join(" | ");
+  return body.hydrographs;
+}
+
+document.addEventListener("DOMContentLoaded", wireExternalHydrographInput);
+
 // ── Run simulation ──────────────────────────────────────────────────────
 async function runSimulation() {
 
@@ -720,6 +756,10 @@ async function runSimulation() {
   }
 
   try {
+    if (usingExternalHydrographs()) {
+      body.external_hydrographs = await previewExternalHydrographs();
+      lastSimRequest = body;
+    }
     const resultData = await submitAnalysis("/api/analyses/design", body, (event) => {
       if (event.type !== "progress" || !isRoldinRun) return;
       const pct = event.total > 0 ? Math.round((event.step / event.total) * 100) : event.progress;
@@ -1413,7 +1453,8 @@ async function runCloggingAnalysis() {
         final_l_cl_m: finalL,
         use_live_data: lastSimRequest.use_live_data,
         climate_scenario: lastSimRequest.climate_scenario,
-        climate_epoch: lastSimRequest.climate_epoch
+        climate_epoch: lastSimRequest.climate_epoch,
+        external_hydrographs: lastSimRequest.external_hydrographs || []
     };
 
     // ── UI: show progress panel, reset state ──────────────────────────
