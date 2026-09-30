@@ -20,7 +20,7 @@ def test_create_sample_project_builds_without_error():
 
 
 def test_run_full_pipeline_with_sample_data():
-    """The full pipeline runs end-to-end with bundled sample ARR/BoM data and
+    """The full pipeline runs end-to-end with bundled sample ARR data and
     produces hyetographs and runoff results for the requested AEPs/durations."""
     project = create_sample_project()
     # Trim to a small AEP/duration set for a fast test.

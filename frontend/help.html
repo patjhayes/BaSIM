@@ -138,7 +138,7 @@
     <li><a href="#site">Site Location</a></li>
     <li><a href="#catchments">Catchments &amp; ILSAX Runoff</a></li>
     <li><a href="#storm">Storm Settings (AEP &amp; Durations)</a></li>
-    <li><a href="#rainfall">Design Rainfall &amp; Temporal Patterns (ARR / BoM)</a></li>
+    <li><a href="#rainfall">Design Rainfall &amp; Temporal Patterns (ARR Data Hub)</a></li>
     <li><a href="#basin">Basin Geometry</a></li>
     <li><a href="#hydraulic">Hydraulic Conductivity (K<sub>v</sub>, K<sub>h</sub>) &amp; Soil Moderation</a></li>
     <li><a href="#soil-params">Green-Ampt Soil Parameters (&Delta;&theta;, &psi;, S<sub>y</sub>)</a></li>
@@ -160,7 +160,7 @@
 <p>GAH-3D is an infiltration-basin design tool for Australian urban drainage. You enter your site location, the contributing catchments, the basin geometry and the soil/hydraulic parameters you have measured on site, and the tool:</p>
 
 <ol>
-  <li>Fetches design rainfall depths (BoM IFD) and ARR 2019 temporal patterns for your site;</li>
+  <li>Fetches design rainfall depths (ARR Data Hub Default IFD) and ARR 2019 temporal patterns for your site;</li>
   <li>Generates rainfall hyetographs and converts them to runoff hydrographs using the ILSAX model;</li>
   <li>Routes every runoff hydrograph through your basin using the <strong>Green-Ampt-Hantush 3D (GAH-3D)</strong> coupled infiltration-and-groundwater-mounding engine; and</li>
   <li>Selects the critical design event using the ARR probability-neutral method and reports peak depth, storage, drain time, groundwater mounding and overtopping.</li>
@@ -168,7 +168,7 @@
 
 <div class="flowchart">
   <span class="step">Site coordinate</span><span class="arrow">&rarr;</span>
-  <span class="step">BoM IFD + ARR patterns</span><span class="arrow">&rarr;</span>
+  <span class="step">ARR Default IFD + temporal patterns</span><span class="arrow">&rarr;</span>
   <span class="step">Hyetograph</span><span class="arrow">&rarr;</span>
   <span class="step">ILSAX runoff</span><span class="arrow">&rarr;</span>
   <span class="step">GAH-3D basin routing</span><span class="arrow">&rarr;</span>
@@ -184,7 +184,7 @@
 
 <p>As an engineer using the tool, a typical workflow is:</p>
 <ol>
-  <li><strong>Locate the site</strong> on the map (or type coordinates). The coordinate drives the BoM IFD and ARR data.</li>
+  <li><strong>Locate the site</strong> on the map (or type coordinates). The coordinate drives all the ARR Data Hub design rainfall.</li>
   <li><strong>Define each catchment</strong> draining to the basin: area, slope, and the paved / supplementary / grassed surface fractions, plus the ILSAX flow-path parameters (length, slope, roughness, depression storage).</li>
   <li><strong>Choose the AEP(s) and storm durations</strong> to analyse. The design AEP defaults to the rarest selected.</li>
   <li><strong>Enter the basin geometry</strong> (base length, width, side slopes, maximum depth).</li>
@@ -203,15 +203,15 @@
 
 <div class="param"><strong>Input:</strong> <code>Latitude</code>, <code>Longitude</code> (Australian extents: &minus;44 to &minus;10&deg; lat, 112 to 154&deg; lon).</div>
 
-<p>The site coordinate is the single most important input because it determines <em>all</em> the rainfall data. GAH-3D uses it to:</p>
+<p>The site coordinate is the single most important input because it determines <em>all</em> the rainfall data. GAH-3D uses it to query the <strong>Australian Rainfall and Runoff (ARR) Data Hub</strong> for:</p>
 <ul>
-  <li>Retrieve <strong>BoM revised IFD (2016)</strong> design rainfall depths for every duration and AEP; and</li>
-  <li>Retrieve the correct <strong>ARR 2019 temporal patterns</strong> for the site's region.</li>
+  <li><strong>Default IFD</strong> design rainfall depths (the Data Hub's jurisdiction-aware envelope, current 2030 baseline) for every duration and AEP; and</li>
+  <li>The correct <strong>ARR 2019 temporal patterns</strong> for the site's region.</li>
 </ul>
 <p>Click the map to drop a marker, or drag it; the latitude/longitude fields update automatically. For design work, use the centroid of the contributing catchments (rainfall is assumed spatially uniform over the catchment).</p>
 
 <div class="note">
-  <strong>Live vs offline data.</strong> With live data on, GAH-3D scrapes the ARR Data Hub and BoM IFD system and caches responses under <code>%USERPROFILE%\.soaksim\cache</code>. If the network is unavailable it falls back to the bundled sample dataset. The BoM IFD endpoint blocks automated scraping &mdash; for production work, export the IFD JSON from the BoM tool and supply it via the <code>SOAKSIM_BOM_IFD_JSON</code> environment variable.
+  <strong>Live vs offline data.</strong> With live data on, GAH-3D fetches design rainfall and temporal patterns from the ARR Data Hub's JSON API in a single request and caches the response under <code>%USERPROFILE%\.soaksim\cache</code>. If the network is unavailable, it falls back to the bundled sample dataset.
 </div>
 
 <!-- =================================================================== -->
@@ -275,7 +275,7 @@ $$Q_n = \frac{A}{360}\sum_i h_i\,I_{n-i}$$
 <h3>5.0 Uploaded inflow hydrographs</h3>
 <p>Choose <strong>Route uploaded inflow hydrographs</strong> when an external model has already produced basin inflows. Upload one or more <code>.csv</code> or <code>.ts1</code> files; BaSIM routes every accepted file and identifies the controlling response.</p>
 <p>Each filename must contain exactly one positive duration token: <code>event_0030m.csv</code> and <code>model_24h.ts1</code> are accepted, including any leading zeros. Files without a duration, with zero duration, or with more than one duration token are rejected.</p>
-<p>CSV files require selected time and flow columns plus explicit units. TS1 files read declared time and flow units. Times must start at zero, be strictly increasing, and use an even timestep. Flows must be finite and non-negative. Uploaded mode bypasses ARR/BoM rainfall generation.</p>
+<p>CSV files require selected time and flow columns plus explicit units. TS1 files read declared time and flow units. Times must start at zero, be strictly increasing, and use an even timestep. Flows must be finite and non-negative. Uploaded mode bypasses ARR rainfall generation.</p>
 
 <h3>5.1 Annual Exceedance Probability (AEP)</h3>
 <div class="param"><strong>Input:</strong> <code>aep_percentages</code> (multi-select: 63.2%, 50%, 20%, 10%, 5%, 2%, 1%).</div>
@@ -293,16 +293,16 @@ $$Q_n = \frac{A}{360}\sum_i h_i\,I_{n-i}$$
 <p>GAH-3D routes <em>every</em> selected duration so the <strong>critical duration</strong> (the one producing the greatest peak basin depth) is found automatically. For basin sizing, select a range that brackets the catchment response &mdash; typically 30 min to 6 hr for urban catchments. The computational timestep adapts to the duration (finer for short storms).</p>
 
 <!-- =================================================================== -->
-<h2 id="rainfall">6. Design Rainfall &amp; Temporal Patterns (ARR / BoM)</h2>
+<h2 id="rainfall">6. Design Rainfall &amp; Temporal Patterns (ARR Data Hub)</h2>
 
-<h3>6.1 BoM IFD design depths</h3>
-<p>For the site coordinate, GAH-3D retrieves the design rainfall depth $P$ (mm) for every selected (AEP, duration) pair from the Bureau of Meteorology <strong>Revised IFD Design Rainfall Data System (2016)</strong>, consistent with ARR 2019.</p>
+<h3>6.1 ARR Default IFD design depths</h3>
+<p>For the site coordinate, GAH-3D retrieves the design rainfall depth $P$ (mm) for every selected (AEP, duration) pair from the <strong>ARR Data Hub's Default IFD layer</strong> (Current 2030 baseline), which envelopes the Bureau of Meteorology's revised IFD dataset with any other jurisdiction-specific datasets that apply to the site.</p>
 
 <h3>6.2 ARR 2019 temporal patterns</h3>
 <p>ARR 2019 provides an <strong>ensemble of 10 temporal patterns</strong> per (AEP, duration). Each pattern is a cumulative-fraction array $\{F_1,\ldots,F_n\}$ with $F_n=1.0$, representing one historically-observed way rainfall can be distributed across the storm. GAH-3D routes <em>all 10</em> patterns to avoid bias toward any single distribution.</p>
 
 <h3>6.3 Hyetograph generation</h3>
-<p>Each pattern is combined with the BoM depth to form a hyetograph:</p>
+<p>Each pattern is combined with the ARR design depth to form a hyetograph:</p>
 <ol>
   <li>Cumulative depths: $P_i^{\text{cum}} = F_i \times P_{\text{total}}$</li>
   <li>Interpolate onto the computational timestep $\Delta t$</li>
@@ -443,7 +443,7 @@ $$Q = \min\!\big(C_w\,P\,H^{3/2},\; C_o\,A_{\text{open}}\sqrt{2gH}\big)$$
 <!-- =================================================================== -->
 <h2 id="climate">14. Climate Change Factors</h2>
 <div class="param"><strong>Inputs:</strong> <code>climate_scenario</code> (SSP1-2.6 &hellip; SSP5-8.5, or Historical), <code>climate_epoch</code> (2030&ndash;2100).</div>
-<p>GAH-3D can uplift the historical BoM IFD design depths using the nationally-uniform ARR climate-change factors (ARR 2019, Book 1 Ch. 6), based on CMIP6 SSP scenarios and IPCC AR6 temperature projections re-baselined to 1961&ndash;1990. The multiplicative factor depends on the SSP, the planning-horizon year, and the storm-duration bin:</p>
+<p>GAH-3D can uplift the Current 2030 baseline design depths using the ARR Data Hub's <strong>Climate Change Adjusted IFD Datasets</strong> layer, which is fetched live for the exact (AEP, duration) pairs being designed for and interpolated between its 2030/2050/2090 epochs. If that live fetch is unavailable, GAH-3D falls back to the nationally-uniform ARR climate-change factors (ARR 2019, Book 1 Ch. 6), based on CMIP6 SSP scenarios and IPCC AR6 temperature projections re-baselined to 1961&ndash;1990, which depend on the SSP, the planning-horizon year, and the storm-duration bin:</p>
 $$P_{\text{future}} = P_{\text{historical}} \times \text{factor}(\text{SSP}, \text{epoch}, \text{duration})$$
 <p>Select "Historical" for an unadjusted assessment (factor = 1.0). For a 2050, 5%-AEP basin on the Swan Coastal Plain, SSP2-4.5 typically adds ~25% to short-duration depths.</p>
 

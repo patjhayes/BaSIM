@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Dict, Tuple
 
 from .climate_change import apply_climate_change_factors
@@ -9,8 +8,7 @@ from .config import default_project_settings
 from .hydrology.engine import design_rainfall_map, generate_hyetographs, run_hydrology
 from .models.common import AEP, Project
 from .models.results import SimulationReport
-from .services.arr import ARRTemporalPatternClient
-from .services.bom import BoMIFDClient
+from .services.arr import ARRDataHubClient
 from .services.samples import load_json
 from .utils.cache import SimpleCache
 from .utils.paths import get_cache_dir
@@ -19,19 +17,15 @@ LOGGER = logging.getLogger(__name__)
 
 
 class DataRepository:
-    def __init__(self, use_live_data: bool = False, bom_local_json: Path | None = None) -> None:
+    def __init__(self, use_live_data: bool = False) -> None:
         self.use_live_data = use_live_data
         cache_dir = get_cache_dir()
-        self.arr_patterns_client = ARRTemporalPatternClient(cache=SimpleCache(cache_dir / "arr"))
-        self.bom_client = BoMIFDClient(
-            cache=SimpleCache(cache_dir / "bom"),
-            local_dataset=bom_local_json,
-        )
+        self.arr_client = ARRDataHubClient(cache=SimpleCache(cache_dir / "arr"))
 
     def fetch_temporal_patterns(self, project: Project):
         if self.use_live_data:
             try:
-                return self.arr_patterns_client.fetch_temporal_patterns(
+                return self.arr_client.fetch_temporal_patterns(
                     project.coordinate,
                     project.settings.durations_minutes,
                     project.settings.ae_ps,
@@ -43,7 +37,7 @@ class DataRepository:
                     exc_info=True,
                 )
         sample = load_json("arr_temporal_patterns.json")
-        all_patterns = self.arr_patterns_client._parse_payload(sample)
+        all_patterns = self.arr_client._parse_payload(sample)
         # Filter to only the requested durations and AEPs
         dur_set = set(int(d) for d in project.settings.durations_minutes)
         aep_set = set(project.settings.ae_ps)
@@ -56,24 +50,22 @@ class DataRepository:
     def fetch_design_rainfalls(self, project: Project):
         if self.use_live_data:
             try:
-                bom_rain = self.bom_client.fetch_ifd(
+                return self.arr_client.fetch_design_rainfalls(
                     project.coordinate,
                     project.settings.durations_minutes,
                     project.settings.ae_ps,
                 )
-                return bom_rain
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(
-                    "Live rainfall depth fetch failed (%s); falling back to bundled samples",
+                    "Live ARR design rainfall fetch failed (%s); falling back to bundled samples",
                     exc,
                     exc_info=True,
                 )
-        sample = load_json("bom_ifd.json")
-        all_rainfalls = self.bom_client._parse_response(sample)
-        # Filter to only the requested durations and AEPs
-        dur_set = set(int(d) for d in project.settings.durations_minutes)
-        aep_set = set(project.settings.ae_ps)
-        return [r for r in all_rainfalls if r.duration_minutes in dur_set and r.aep in aep_set]
+        sample = load_json("arr_ifd.json")
+        all_rainfalls = self.arr_client._parse_ifd_table(
+            sample, project.settings.durations_minutes, project.settings.ae_ps
+        )
+        return all_rainfalls
 
 
 def run_full_pipeline(
@@ -92,7 +84,11 @@ def run_full_pipeline(
 
     # Apply ARR climate change factors to design rainfall depths
     design_rainfalls = apply_climate_change_factors(
-        design_rainfalls, climate_scenario, climate_epoch
+        design_rainfalls,
+        climate_scenario,
+        climate_epoch,
+        arr_client=data_repo.arr_client if data_repo.use_live_data else None,
+        coordinate=project.coordinate,
     )
 
     rainfall_mapping = design_rainfall_map(design_rainfalls)

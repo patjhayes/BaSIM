@@ -7,20 +7,40 @@ import re
 import zipfile
 from collections import defaultdict
 from itertools import accumulate
-from typing import Dict, List, Sequence
-from urllib.parse import urljoin
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import requests
 
-from ..models.common import AEP, Coordinate, TemporalPattern
+from ..models.common import AEP, Coordinate, DesignRainfall, TemporalPattern
 from ..utils.cache import SimpleCache
 from ..utils.paths import get_cache_dir
 
 LOGGER = logging.getLogger(__name__)
 
+# Bumped whenever the cached payload shape changes, so stale HTML-era caches
+# on disk are never reused.
+_CACHE_SCHEMA_VERSION = "v2"
 
-class ARRTemporalPatternClient:
-    """Client that scrapes ARR Datahub for temporal patterns."""
+DEFAULT_IFD_BASELINE = "Default Current (2030) Baseline"
+
+_SSP_LABELS = {
+    "SSP1": "SSP1-2.6",
+    "SSP2": "SSP2-4.5",
+    "SSP3": "SSP3-7.0",
+    "SSP5": "SSP5-8.5",
+}
+
+_CC_TABLE_LABEL_RE = re.compile(r"\((\d{4}) Baseline - SSP(\d)\)")
+
+
+class ARRDataHubClient:
+    """Client for the ARR Data Hub JSON API (data.arr-software.org).
+
+    A single GET request returns the design rainfall (Default IFD) depths,
+    the temporal pattern bundle location, and the climate-change-adjusted
+    IFD tables for a coordinate, replacing the previous BOM IFD HTML scrape
+    and the ARR HTML result-page scrape.
+    """
 
     # Maps ARR AEP-window labels to candidate AEP values (ordered by priority)
     _WINDOW_AEP_CANDIDATES = {
@@ -41,16 +61,176 @@ class ARRTemporalPatternClient:
         self.timeout_seconds = timeout_seconds
         self.cache = cache or SimpleCache(get_cache_dir() / "arr")
         self._session = requests.Session()
-        self._session.headers.update({"User-Agent": "SoakSIM/0.1"})
+        self._session.headers.update({"User-Agent": "BaSIM/4.0"})
 
-    def _make_cache_key(
+    # ── Shared layers payload (IFD + temporal pattern URL + CC-adjusted IFD) ──
+
+    def _layers_cache_key(self, coordinate: Coordinate) -> str:
+        return (
+            f"{_CACHE_SCHEMA_VERSION}|layers|{coordinate.latitude:.5f}|"
+            f"{coordinate.longitude:.5f}"
+        )
+
+    def _fetch_layers(self, coordinate: Coordinate, use_cache: bool = True) -> Dict[str, object]:
+        key = self._layers_cache_key(coordinate)
+        if use_cache:
+            cached = self.cache.load(key)
+            if cached is not None:
+                return cached
+        layers = self._download_layers(coordinate)
+        if use_cache:
+            self.cache.save(key, layers)
+        return layers
+
+    def _download_layers(self, coordinate: Coordinate) -> Dict[str, object]:
+        params = {
+            "lon_coord": f"{coordinate.longitude:.6f}",
+            "lat_coord": f"{coordinate.latitude:.6f}",
+            "type": "json",
+            "TemporalPatterns": "1",
+            "BoMIFD": "1",
+            "CCAdjIFDDatasets": "1",
+        }
+        response = self._session.get(
+            f"{self.base_url}/", params=params, timeout=self.timeout_seconds
+        )
+        if response.status_code != 200:
+            raise RuntimeError(
+                "ARR Data Hub request failed with status "
+                f"{response.status_code}: {response.text[:200]}"
+            )
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise RuntimeError("ARR Data Hub returned a non-JSON response") from exc
+        layers = body.get("layers")
+        if not isinstance(layers, dict):
+            raise RuntimeError("ARR Data Hub response is missing the 'layers' object")
+        return layers
+
+    # ── Design rainfall (Default IFD depths) ─────────────────────────────
+
+    def fetch_design_rainfalls(
+        self,
+        coordinate: Coordinate,
+        durations: Sequence[int],
+        ae_ps: Sequence[AEP],
+        use_cache: bool = True,
+        baseline: str = DEFAULT_IFD_BASELINE,
+    ) -> List[DesignRainfall]:
+        layers = self._fetch_layers(coordinate, use_cache=use_cache)
+        rec_ifd = layers.get("RecIFD")
+        if not isinstance(rec_ifd, dict) or baseline not in rec_ifd:
+            raise RuntimeError(
+                f"ARR Data Hub response is missing the Default IFD baseline '{baseline}'"
+            )
+        return self._parse_ifd_table(rec_ifd[baseline], durations, ae_ps)
+
+    # ── Climate-change-adjusted IFD depths ────────────────────────────────
+
+    def fetch_climate_adjusted_ifds(
+        self,
+        coordinate: Coordinate,
+        durations: Sequence[int],
+        ae_ps: Sequence[AEP],
+        use_cache: bool = True,
+    ) -> Dict[Tuple[str, int], List[DesignRainfall]]:
+        layers = self._fetch_layers(coordinate, use_cache=use_cache)
+        cc_tables = layers.get("CCAdjIFDDatasets")
+        if not isinstance(cc_tables, dict):
+            raise RuntimeError("ARR Data Hub response is missing the CCAdjIFDDatasets layer")
+        result: Dict[Tuple[str, int], List[DesignRainfall]] = {}
+        for label, table in cc_tables.items():
+            parsed_label = self._parse_cc_table_label(label)
+            if parsed_label is None:
+                continue
+            ssp, epoch = parsed_label
+            result[(ssp, epoch)] = self._parse_ifd_table(table, durations, ae_ps)
+        return result
+
+    @staticmethod
+    def _parse_cc_table_label(label: str) -> Optional[Tuple[str, int]]:
+        match = _CC_TABLE_LABEL_RE.search(label)
+        if not match:
+            return None
+        epoch = int(match.group(1))
+        ssp = _SSP_LABELS.get(f"SSP{match.group(2)}")
+        if ssp is None:
+            return None
+        return ssp, epoch
+
+    @staticmethod
+    def _parse_ifd_table(
+        table: object,
+        durations: Sequence[int],
+        ae_ps: Sequence[AEP],
+    ) -> List[DesignRainfall]:
+        """Parse a Data Hub {index, columns, data} IFD matrix.
+
+        ``index`` holds durations in minutes, ``columns`` holds AEP percent
+        values, and ``data`` is a duration x AEP depth matrix (mm).
+        """
+        if not isinstance(table, dict):
+            raise RuntimeError("Malformed ARR Data Hub IFD table")
+        index = table.get("index")
+        columns = table.get("columns")
+        data = table.get("data")
+        if not isinstance(index, list) or not isinstance(columns, list) or not isinstance(data, list):
+            raise RuntimeError("Malformed ARR Data Hub IFD table")
+
+        duration_filter = {int(d) for d in durations}
+        aep_filter = {float(a.value) for a in ae_ps}
+
+        results: List[DesignRainfall] = []
+        for row_idx, duration_raw in enumerate(index):
+            try:
+                duration_minutes = int(round(float(duration_raw)))
+            except (TypeError, ValueError):
+                continue
+            if duration_filter and duration_minutes not in duration_filter:
+                continue
+            if row_idx >= len(data) or not isinstance(data[row_idx], list):
+                continue
+            row = data[row_idx]
+            for col_idx, aep_raw in enumerate(columns):
+                try:
+                    aep_percent = float(aep_raw)
+                except (TypeError, ValueError):
+                    continue
+                if aep_filter and aep_percent not in aep_filter:
+                    continue
+                try:
+                    aep_enum = AEP.from_percent(aep_percent)
+                except ValueError:
+                    continue
+                if col_idx >= len(row):
+                    continue
+                try:
+                    depth_mm = float(row[col_idx])
+                except (TypeError, ValueError):
+                    continue
+                duration_hr = duration_minutes / 60.0
+                intensity = round(depth_mm / duration_hr, 2) if duration_hr > 0 else 0.0
+                results.append(
+                    DesignRainfall(
+                        duration_minutes=duration_minutes,
+                        aep=aep_enum,
+                        depth_mm=depth_mm,
+                        intensity_mm_per_hr=intensity,
+                    )
+                )
+        return results
+
+    # ── Temporal patterns ──────────────────────────────────────────────
+
+    def _make_pattern_cache_key(
         self, coordinate: Coordinate, durations: Sequence[int], ae_ps: Sequence[AEP]
     ) -> str:
         durations_key = ",".join(map(str, sorted(set(int(d) for d in durations))))
         aep_key = ",".join(f"{a.value}" for a in sorted(ae_ps, key=lambda a: a.value))
         return (
-            f"temporal_patterns|{coordinate.latitude:.5f}|{coordinate.longitude:.5f}|"
-            f"{durations_key}|{aep_key}"
+            f"{_CACHE_SCHEMA_VERSION}|temporal_patterns|{coordinate.latitude:.5f}|"
+            f"{coordinate.longitude:.5f}|{durations_key}|{aep_key}"
         )
 
     def fetch_temporal_patterns(
@@ -60,48 +240,32 @@ class ARRTemporalPatternClient:
         ae_ps: Sequence[AEP],
         use_cache: bool = True,
     ) -> Dict[tuple, List[TemporalPattern]]:
-        key = self._make_cache_key(coordinate, durations, ae_ps)
+        key = self._make_pattern_cache_key(coordinate, durations, ae_ps)
         if use_cache:
             cached = self.cache.load(key)
             if cached is not None:
                 return self._parse_payload(cached)
 
-        payload = self._download_payload(coordinate, durations, ae_ps)
+        payload = self._download_pattern_payload(coordinate, durations, ae_ps, use_cache=use_cache)
         if use_cache:
             self.cache.save(key, payload)
         return self._parse_payload(payload)
 
-    def _download_payload(
+    def _download_pattern_payload(
         self,
         coordinate: Coordinate,
         durations: Sequence[int],
         ae_ps: Sequence[AEP],
+        use_cache: bool = True,
     ) -> Dict[str, object]:
-        html = self._request_result_page(coordinate)
-        zip_bytes = self._download_zip_bundle(html)
+        layers = self._fetch_layers(coordinate, use_cache=use_cache)
+        point_tp = layers.get("PointTP")
+        if not isinstance(point_tp, dict) or not point_tp.get("url"):
+            raise RuntimeError("ARR Data Hub response is missing the PointTP temporal pattern layer")
+        zip_bytes = self._download_zip(str(point_tp["url"]))
         return self._extract_patterns(zip_bytes, durations, ae_ps)
 
-    def _request_result_page(self, coordinate: Coordinate) -> str:
-        data = {
-            "lon_coord": f"{coordinate.longitude:.6f}",
-            "lat_coord": f"{coordinate.latitude:.6f}",
-            "TemporalPatterns": "on",
-            "subButton": "Submit",
-        }
-        url = f"{self.base_url}/"
-        response = self._session.post(url, data=data, timeout=self.timeout_seconds)
-        if response.status_code != 200:
-            raise RuntimeError(
-                "ARR Datahub request failed with status "
-                f"{response.status_code}: {response.text[:200]}"
-            )
-        return response.text
-
-    def _download_zip_bundle(self, html: str) -> bytes:
-        match = re.search(r"static/temporal_patterns/[^\"]+\.zip", html)
-        if not match:
-            raise RuntimeError("Unable to locate temporal pattern ZIP link in ARR response")
-        zip_url = urljoin(f"{self.base_url}/", match.group(0))
+    def _download_zip(self, zip_url: str) -> bytes:
         response = self._session.get(zip_url, timeout=self.timeout_seconds)
         if response.status_code != 200:
             raise RuntimeError(
@@ -318,5 +482,5 @@ class ARRTemporalPatternClient:
 
 
 def fetch_sample_temporal_patterns(sample_payload: Dict[str, object]) -> Dict[tuple, List[TemporalPattern]]:
-    client = ARRTemporalPatternClient(cache=SimpleCache(get_cache_dir() / "tmp"))
+    client = ARRDataHubClient(cache=SimpleCache(get_cache_dir() / "tmp"))
     return client._parse_payload(sample_payload)

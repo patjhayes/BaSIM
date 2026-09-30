@@ -1,9 +1,10 @@
 # BaSIM v4
 
 BaSIM is an authenticated stormwater infiltration-basin design application
-using the Green-Ampt/Hantush 3D (GAH-3D) engine. It supports ARR/BoM rainfall
-inputs, probability-neutral critical storm selection, groundwater mounding,
-hydraulic outlet structures, and multi-year clogging degradation analysis.
+using the Green-Ampt/Hantush 3D (GAH-3D) engine. It supports ARR Data Hub
+rainfall inputs, probability-neutral critical storm selection, groundwater
+mounding, hydraulic outlet structures, and multi-year clogging degradation
+analysis.
 
 ## Architecture
 
@@ -110,6 +111,6 @@ webhook endpoint as `/api/billing/webhook/stripe`, subscribe it to
 `checkout.session.completed`, and set its signing secret as
 `STRIPE_WEBHOOK_SECRET` on the backend service.
 
-Live ARR/BoM access retains the vendored GAH cache and local fallback behavior.
-A production-approved live feed or provisioned dataset remains a release gate
-for engineering use.
+Live ARR Data Hub access retains the vendored GAH cache and local fallback
+behavior. A production-approved live feed or provisioned dataset remains a
+release gate for engineering use.
