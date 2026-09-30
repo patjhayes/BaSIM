@@ -19,6 +19,7 @@
     // (/api/simulate, /api/v1/gah_clogging) require a Bearer access token.
     const SUPABASE_URL = configuredValue(APP_CONFIG.supabaseUrl);
     const SUPABASE_ANON_KEY = configuredValue(APP_CONFIG.supabaseAnonKey);
+    const EULA_VERSION = "2026-09-02-placeholder";
     let supabaseClient = null;
     try {
       if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
@@ -592,12 +593,39 @@ function getSelectedDurations() {
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-async function submitAnalysis(path, payload, onEvent) {
-  const submissionResponse = await fetch(apiUrl(path), {
+async function acceptCurrentEula() {
+  const agreed = window.confirm(
+    "Before running an analysis, please confirm that you have read and agree to the current BaSIM End-User Licence Agreement."
+  );
+  if (!agreed) {
+    throw new Error("Accept the current BaSIM End-User Licence Agreement before continuing");
+  }
+
+  const response = await fetch(apiUrl("/api/legal/eula/accept"), {
     method: "POST",
     headers: await authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ version: EULA_VERSION }),
   });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(error.detail || "Unable to record EULA acceptance.");
+  }
+}
+
+async function submitAnalysis(path, payload, onEvent) {
+  let submissionResponse = await fetch(apiUrl(path), {
+      method: "POST",
+      headers: await authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    });
+  if (submissionResponse.status === 428) {
+    await acceptCurrentEula();
+    submissionResponse = await fetch(apiUrl(path), {
+      method: "POST",
+      headers: await authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    });
+  }
   if (!submissionResponse.ok) {
     const error = await submissionResponse.json().catch(() => ({ detail: submissionResponse.statusText }));
     throw new Error(error.detail || JSON.stringify(error));
