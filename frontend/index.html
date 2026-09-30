@@ -160,17 +160,18 @@
       <h3>🪨 GAH-3D Basin Design</h3>
       <div class="row">
         <div class="field">
-          <label>Vertical Hydraulic Conductivity (Kv)
+          <label>Field-Tested Ks (Vertical, Kv)
             <a href="/help.html#k-value-selection" target="_blank" class="info-link" style="font-size: 0.75rem; color: #3b82f6; text-decoration: none; margin-left: 0.3rem;">[Learn more in the Technical Reference Manual]</a>
-            <span class="info-bubble" title="Enter the field-tested vertical saturated hydraulic conductivity of the shallow vadose zone. Best derived from shallow, dry-zone testing (e.g., double-ring infiltrometers).">&#9432;</span>
+            <span class="info-bubble" title="Enter the field-tested vertical saturated hydraulic conductivity (Ks) of the shallow vadose zone. Best derived from shallow, dry-zone testing (e.g., double-ring infiltrometers).">&#9432;</span>
           </label>
-          <input type="number" id="inp-kv" value="1.2" step="0.1" min="0.01" />
+          <input type="number" id="inp-kv" value="1.2" step="0.1" min="0.01" required />
         </div>
         <div class="field">
-          <label>Horizontal Hyd. Conductivity (Kh) [Optional]
-            <span class="info-bubble" title="Enter the horizontal hydraulic conductivity of the saturated aquifer. This parameter drives the lateral Transmissivity of the Hantush groundwater mound. If left blank, the model assumes conservative isotropic conditions (Kh = Kv).">&#9432;</span>
+          <label>Aquifer Hydraulic Conductivity (Kh)
+            <a href="/help.html#hydraulic" target="_blank" class="info-link" style="font-size: 0.75rem; color: #3b82f6; text-decoration: none; margin-left: 0.3rem;">[Learn more in the Technical Reference Manual]</a>
+            <span class="info-bubble" title="Required. Kh is the horizontal hydraulic conductivity of the SATURATED AQUIFER (not the vadose-zone soil) — it drives the lateral transmissivity of the Hantush groundwater mound. No default is assumed; enter a site-specific value from saturated-zone testing, or a recognised regional reference (see Technical Reference Manual for typical Perth aquifer values: Bassendean Sand, Spearwood Sand, Tamala Limestone, Safety Bay Sand).">&#9432;</span>
           </label>
-          <input type="number" id="inp-kh" placeholder="Leave blank for Kh = Kv" step="0.1" min="0.01" />
+          <input type="number" id="inp-kh" step="0.1" min="0.01" required />
         </div>
         <div class="field" style="display:none">
           <label>Drain time (hours)</label>
@@ -378,7 +379,7 @@
       <!-- Roldin progress panel (shown during slow coupled-model runs) -->
       <div id="simulation-progress" style="display:none;padding:1.2rem 1.4rem">
         <div style="font-size:.78rem;font-weight:600;color:#1e40af;margin-bottom:.5rem;letter-spacing:.02em">
-          ⏳ RUNNING GREEN-AMPT-HANTUSH 3D BASIN ENGINE
+          ⏳ RUNNING GREEN-AMPT-HANTUSH 3D BASIN ENGINE <span id="progress-elapsed" style="font-weight:400;color:#64748b"></span>
         </div>
         <div style="background:#e2e8f0;border-radius:6px;height:10px;margin-bottom:.8rem;overflow:hidden">
           <div id="progress-bar" style="background:linear-gradient(90deg,#2563eb,#3b82f6);height:10px;border-radius:6px;width:0%;transition:width .4s ease"></div>
@@ -481,6 +482,7 @@
              <div id="clogging-loading" style="display:none; text-align:center; padding: 2rem; color: var(--primary); font-weight: 600;">
                  <div class="spinner" style="margin: 0 auto 1rem auto;"></div>
                  <div id="clogging-loading-text">Running timeline simulation...</div>
+                 <div id="clogging-loading-elapsed" style="font-size:.75rem;color:var(--muted);margin-top:.2rem"></div>
                  <div style="background:#e2e8f0;border-radius:6px;height:10px;margin:1rem auto;overflow:hidden;max-width:400px;">
                      <div id="clogging-progress-bar" style="background:linear-gradient(90deg,#2563eb,#3b82f6);height:10px;border-radius:6px;width:0%;transition:width .4s ease"></div>
                  </div>
@@ -554,18 +556,8 @@
     </div>
 
     <footer>
-      &copy; 2026 <a href="https://innealta.com.au" target="_blank">Innealta Engineering</a> — SoakSIM is provided free of charge.
-      Results should be verified by a qualified engineer.
+      &copy; 2026 <a href="https://innealta.com.au" target="_blank">Innealta Engineering</a>
     </footer>
-  </div>
-</div>
-
-<!-- ── Loading overlay ───────────────────────────────────────────────── -->
-<div class="loading-overlay" id="loading">
-  <div class="spinner-card">
-    <div class="spinner"></div>
-    <p style="font-weight:600;color:var(--text)">Running simulation…</p>
-    <p style="font-size:.8rem;color:var(--muted)">Fetching ARR data &amp; computing runoff</p>
   </div>
 </div>
 

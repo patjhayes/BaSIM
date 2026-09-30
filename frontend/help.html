@@ -329,11 +329,21 @@ $$V(z) = L_bW_bz + m(L_b+W_b)z^2 + \tfrac{4}{3}m^2 z^3$$
 
 <h3>8.1 Vertical hydraulic conductivity K<sub>v</sub></h3>
 <div class="param"><strong>Input:</strong> <code>vertical_k_mm_per_hr</code> (entered in m/day in the UI, converted internally).</div>
-<p>K<sub>v</sub> governs the vertical, gravity-and-capillary-driven flux of the Green-Ampt wetting front beneath the basin floor. <strong>Enter the raw, site-specific field-measured value</strong> from shallow, unsaturated-zone testing &mdash; ideally a double-ring infiltrometer or shallow constant-head permeameter. If the water table is too shallow for a field test, use an undisturbed core with a laboratory constant-head test. For imported fill, K<sub>v</sub> must represent the compacted fill as specified in your compaction design.</p>
+<p>K<sub>v</sub> is the <strong>field-tested saturated hydraulic conductivity (K<sub>s</sub>)</strong> of the shallow, unsaturated vadose zone. It governs the vertical, gravity-and-capillary-driven flux of the Green-Ampt wetting front beneath the basin floor. <strong>Enter the raw, site-specific field-measured value</strong> from shallow, unsaturated-zone testing &mdash; ideally a double-ring infiltrometer or shallow constant-head permeameter. If the water table is too shallow for a field test, use an undisturbed core with a laboratory constant-head test. For imported fill, K<sub>v</sub> must represent the compacted fill as specified in your compaction design.</p>
 
-<h3>8.2 Horizontal hydraulic conductivity K<sub>h</sub> (optional)</h3>
-<div class="param"><strong>Input:</strong> <code>horizontal_k_mm_per_hr</code> (leave blank for K<sub>h</sub> = K<sub>v</sub>).</div>
-<p>K<sub>h</sub> governs the lateral transmissivity $T = K_h \cdot b$ of the aquifer that dissipates the groundwater mound. Use saturated-zone testing &mdash; slug tests, pump tests, or deep borehole permeability below the water table. <strong>If you leave it blank, GAH-3D assumes isotropy (K<sub>h</sub> = K<sub>v</sub>), which is conservative</strong> because it limits lateral dissipation and produces a larger mound.</p>
+<h3>8.2 Aquifer hydraulic conductivity K<sub>h</sub> (required)</h3>
+<div class="param"><strong>Input:</strong> <code>horizontal_k_mm_per_hr</code> (required &mdash; no default is assumed).</div>
+<p><strong>K<sub>h</sub> is the hydraulic conductivity of the saturated aquifer</strong> (not the vadose-zone soil measured by K<sub>v</sub>). It governs the lateral transmissivity $T = K_h \cdot b$ that dissipates the groundwater mound. Use saturated-zone testing &mdash; slug tests, pump tests, or deep borehole permeability below the water table &mdash; or a recognised regional hydrogeological reference for the aquifer formation at your site.</p>
+
+<p>For Perth-metropolitan sites, the following baseline values are based on the foundational hydrogeological framework established by W.A. Davidson (1995, GSWA Bulletin 142) and the standard parameters adopted by the Department of Water and Environmental Regulation (DWER) for the Perth Regional Aquifer Modelling System (PRAMS):</p>
+<table>
+  <tr><th>Formation</th><th>Typical K<sub>h</sub> (Design)</th><th>Accepted Range (K<sub>h</sub>)</th><th>Specific Yield (S<sub>y</sub>)</th></tr>
+  <tr><td>Bassendean Sand</td><td>15 m/day</td><td>10 &ndash; 50 m/day</td><td>0.20 (20%)</td></tr>
+  <tr><td>Spearwood Sand</td><td>10 m/day</td><td>7 &ndash; 15 m/day</td><td>0.20 (20%)</td></tr>
+  <tr><td>Tamala Limestone</td><td>250 m/day</td><td>100 &ndash; 1000+ m/day</td><td>0.20 &ndash; 0.30</td></tr>
+  <tr><td>Safety Bay Sand</td><td>12 m/day</td><td>10 &ndash; 15 m/day</td><td>0.20 (20%)</td></tr>
+</table>
+<p>These are baseline design values only &mdash; site-specific testing should be used where available, particularly for Tamala Limestone where karstic/solutional features can produce a very wide conductivity range.</p>
 
 <div class="warn">
   <strong>Avoid double-penalisation.</strong> Do <em>not</em> enter a K value that was already damped by shallow-groundwater interaction during the field test. A test run too close to the water table measures a system response, not the true soil property. Using such a value double-counts the groundwater effect &mdash; once in the Green-Ampt term and again in the Hantush mound &mdash; and yields an over-sized, inefficient basin.

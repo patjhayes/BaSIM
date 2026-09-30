@@ -304,6 +304,42 @@
       attribution: "&copy; OpenStreetMap contributors",
     }).addTo(map);
 
+    // WA soil-landscape mapping (WA Soil Group), Dept. of Primary Industries and
+    // Regional Development (DPIRD-076), served via the SLIP public WMS.
+    // https://catalogue.data.wa.gov.au/dataset/soil-landscape-mapping-western-australia-attributed-by-wa-soil-group
+    const soilLayer = L.tileLayer.wms(
+      "https://public-services.slip.wa.gov.au/public/services/SLIP_Public_Services/Soil_Landscape/MapServer/WMSServer",
+      {
+        layers: "0",
+        format: "image/png",
+        transparent: true,
+        version: "1.3.0",
+        opacity: 0.65,
+        attribution: "Soil-landscape mapping (WA Soil Group) &copy; Government of Western Australia (DPIRD), CC BY 4.0",
+      },
+    );
+
+    const SoilLayerToggle = L.Control.extend({
+      options: { position: "topright" },
+      onAdd: function () {
+        const container = L.DomUtil.create("div", "leaflet-bar soil-layer-toggle");
+        container.style.cssText = "background:#fff;padding:.4rem .6rem;font-size:.78rem;cursor:pointer;user-select:none;line-height:1.3";
+        container.innerHTML = '<label style="cursor:pointer;display:flex;align-items:center;gap:.4rem;margin:0">' +
+          '<input type="checkbox" id="inp-soil-layer-toggle" style="margin:0" /> WA Soil Type</label>';
+        L.DomEvent.disableClickPropagation(container);
+        return container;
+      },
+    });
+    map.addControl(new SoilLayerToggle());
+
+    document.getElementById("inp-soil-layer-toggle").addEventListener("change", (e) => {
+      if (e.target.checked) {
+        soilLayer.addTo(map);
+      } else {
+        map.removeLayer(soilLayer);
+      }
+    });
+
     let marker = L.marker([-31.9505, 115.8605], { draggable: true }).addTo(map);
 
     marker.on("dragend", () => {
@@ -702,11 +738,15 @@ document.addEventListener("DOMContentLoaded", wireExternalHydrographInput);
 // ── Run simulation ──────────────────────────────────────────────────────
 async function runSimulation() {
 
+  const khRaw = document.getElementById("inp-kh").value;
+  if (!khRaw || isNaN(parseFloat(khRaw))) {
+    alert("Aquifer Hydraulic Conductivity (Kh) is required — there is no default. See the Technical Reference Manual for typical Perth aquifer values.");
+    document.getElementById("inp-kh").focus();
+    return;
+  }
 
   const btn = document.getElementById("btn-run");
-  const loading = document.getElementById("loading");
   btn.disabled = true;
-  loading.classList.add("active");
 
   const aepSelect = document.getElementById("inp-aeps");
   const selectedAEPs = Array.from(aepSelect.selectedOptions).map((o) => parseFloat(o.value));
@@ -740,7 +780,7 @@ async function runSimulation() {
     aep_percentages: selectedAEPs,
     durations_minutes: durations,
     vertical_k_mm_per_hr: parseFloat(document.getElementById("inp-kv").value) * 1000 / 24,
-    horizontal_k_mm_per_hr: document.getElementById("inp-kh").value ? parseFloat(document.getElementById("inp-kh").value) * 1000 / 24 : null,
+    horizontal_k_mm_per_hr: parseFloat(khRaw) * 1000 / 24,
     design_drain_time_hours: 24,
     soil_moderation_factor: parseFloat(document.getElementById("inp-safety").value),
     surface_level_m_ahd: parseFloat(document.getElementById("inp-surface-lvl").value),
@@ -775,12 +815,21 @@ async function runSimulation() {
   const progressBar = document.getElementById("progress-bar");
   const progressCurrent = document.getElementById("progress-current-storm");
   const progressList = document.getElementById("progress-storm-list");
+  const progressElapsed = document.getElementById("progress-elapsed");
+  let progressTimer = null;
   if (isRoldinRun) {
     progressPanel.style.display = "";
     document.getElementById("placeholder").style.display = "none";
-    progressBar.style.width = "0%";
-    progressCurrent.textContent = "Starting...";
+    progressBar.style.width = "3%";
+    progressCurrent.textContent = "Submitting request — fetching ARR rainfall data and computing runoff (this can take up to a minute)…";
     progressList.innerHTML = "";
+    const startTime = Date.now();
+    if (progressElapsed) {
+      progressElapsed.textContent = "(0s)";
+      progressTimer = setInterval(() => {
+        progressElapsed.textContent = `(${Math.round((Date.now() - startTime) / 1000)}s)`;
+      }, 1000);
+    }
   }
 
   try {
@@ -790,6 +839,11 @@ async function runSimulation() {
     }
     const resultData = await submitAnalysis("/api/analyses/design", body, (event) => {
       if (event.type !== "progress" || !isRoldinRun) return;
+      if (event.phase === "setup") {
+        progressBar.style.width = "5%";
+        progressCurrent.textContent = event.message || "Fetching rainfall data and computing runoff…";
+        return;
+      }
       const pct = event.total > 0 ? Math.round((event.step / event.total) * 100) : event.progress;
       progressBar.style.width = pct + "%";
       if (event.done) {
@@ -810,7 +864,7 @@ async function runSimulation() {
     alert("Simulation failed:\n" + e.message);
   } finally {
     btn.disabled = false;
-    loading.classList.remove("active");
+    if (progressTimer) clearInterval(progressTimer);
   }
 }
 
@@ -1499,10 +1553,20 @@ async function runCloggingAnalysis() {
     tableContainer.style.display = "none";
     dashboard.style.display = "none";
     if (progressBar) progressBar.style.width = "0%";
-    if (loadingText) loadingText.textContent = "Starting clogging analysis…";
+    if (loadingText) loadingText.textContent = "Submitting request — fetching ARR rainfall data…";
     tableBody.innerHTML = "";
     cloggingTimelineData = null;
     cloggingSelectedYearRow = null;
+
+    const elapsedEl = document.getElementById("clogging-loading-elapsed");
+    const cloggingStartTime = Date.now();
+    let cloggingTimer = null;
+    if (elapsedEl) {
+        elapsedEl.textContent = "(0s)";
+        cloggingTimer = setInterval(() => {
+            elapsedEl.textContent = `(${Math.round((Date.now() - cloggingStartTime) / 1000)}s)`;
+        }, 1000);
+    }
 
     try {
         payload.project_code = document.getElementById("inp-project-code").value.trim() || null;
@@ -1535,6 +1599,7 @@ async function runCloggingAnalysis() {
     } finally {
         loading.style.display = "none";
         chartContainer.style.display = "";
+        if (cloggingTimer) clearInterval(cloggingTimer);
     }
 }
 
@@ -2149,6 +2214,34 @@ function generateReport() {
             d.spilled ? "Yes" : "No",
         ])
     );
+
+    // ── Appendix: Design Rainfall (IFD) & Temporal Patterns Used ──
+    const ifdRows = simulationData.design_rainfalls_used || [];
+    const patternRows = simulationData.temporal_patterns_used || [];
+    if (ifdRows.length || patternRows.length) {
+        doc.addPage(); y = margin;
+        heading("Appendix: Design Rainfall & Temporal Patterns Used");
+        para("Design rainfall depths and ARR temporal pattern events retrieved from the ARR Data Hub " +
+            "(Default IFD, Current 2030 baseline) for the AEPs and durations analysed above.");
+        if (ifdRows.length) {
+            heading("Design Rainfall (IFD) Depths", 12, 6);
+            table(
+                ["AEP", "Duration (min)", "Depth (mm)", "Intensity (mm/hr)"],
+                ifdRows.map(r => [r.aep, r.duration_minutes, r.depth_mm.toFixed(2), r.intensity_mm_per_hr.toFixed(2)])
+            );
+        }
+        if (patternRows.length) {
+            heading("ARR Temporal Patterns", 12, 6);
+            table(
+                ["AEP", "Duration (min)", "Rank", "Event ID", "Region", "Source AEP (%)"],
+                patternRows.map(r => [
+                    r.aep, r.duration_minutes, r.pattern_rank,
+                    r.event_id || "-", r.region || "-",
+                    r.source_aep_percent != null ? Number(r.source_aep_percent).toFixed(1) : "-",
+                ])
+            );
+        }
+    }
 
     // Footer page numbers
     const pageCount = doc.internal.getNumberOfPages();

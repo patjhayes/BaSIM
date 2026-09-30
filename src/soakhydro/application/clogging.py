@@ -55,7 +55,9 @@ class CloggingRequest(BaseModel):
     external_hydrographs: list[dict[str, Any]] = Field(default_factory=list)
 
 
-def prepare_clogging_analysis(request: CloggingRequest) -> dict[str, Any]:
+def prepare_clogging_analysis(
+    request: CloggingRequest, progress: Optional[ProgressCallback] = None
+) -> dict[str, Any]:
     if request.external_hydrographs:
         return {
             "external_hydrographs": [
@@ -94,6 +96,7 @@ def prepare_clogging_analysis(request: CloggingRequest) -> dict[str, Any]:
         pattern_rank=request.critical_pattern_rank,
         climate_scenario=request.climate_scenario,
         climate_epoch=request.climate_epoch,
+        progress=progress,
     )
     return {
         "design_aep": design_aep,
@@ -296,10 +299,10 @@ def run_clogging_analysis(
         progress(
             {
                 "phase": "setup",
-                "message": "Fetching rainfall data and running hydrology",
+                "message": "Fetching rainfall data and running hydrology…",
             }
         )
-    setup = prepare_clogging_analysis(request)
+    setup = prepare_clogging_analysis(request, progress=progress)
     total_steps = setup["num_years"] + 1
     timeline = []
     for year in range(total_steps):

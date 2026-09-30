@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from .climate_change import apply_climate_change_factors
 from .config import default_project_settings
@@ -14,6 +14,13 @@ from .utils.cache import SimpleCache
 from .utils.paths import get_cache_dir
 
 LOGGER = logging.getLogger(__name__)
+
+ProgressCallback = Callable[[dict[str, Any]], None]
+
+
+def _emit_setup(progress: Optional[ProgressCallback], message: str) -> None:
+    if progress is not None:
+        progress({"phase": "setup", "message": message})
 
 
 class DataRepository:
@@ -75,13 +82,18 @@ def run_full_pipeline(
     pattern_rank: int = 1,
     climate_scenario: str | None = None,
     climate_epoch: int | None = None,
+    progress: Optional[ProgressCallback] = None,
 ) -> SimulationReport:
     project.validate()
     data_repo = data_repo or DataRepository(use_live_data=False)
 
+    _emit_setup(progress, "Fetching ARR temporal patterns for the design storms…")
     patterns = data_repo.fetch_temporal_patterns(project)
+    _emit_setup(progress, "Fetching ARR Default IFD design rainfall depths…")
     design_rainfalls = data_repo.fetch_design_rainfalls(project)
 
+    if climate_scenario and climate_scenario.lower() not in ("historical", "none", ""):
+        _emit_setup(progress, "Applying climate-change-adjusted rainfall depths…")
     # Apply ARR climate change factors to design rainfall depths
     design_rainfalls = apply_climate_change_factors(
         design_rainfalls,
@@ -91,11 +103,13 @@ def run_full_pipeline(
         coordinate=project.coordinate,
     )
 
+    _emit_setup(progress, "Generating hyetographs from design rainfall and temporal patterns…")
     rainfall_mapping = design_rainfall_map(design_rainfalls)
     hyetographs = generate_hyetographs(
         patterns,
         rainfall_mapping,
     )
+    _emit_setup(progress, "Computing ILSAX catchment runoff for every storm and pattern…")
     report = run_hydrology(project, hyetographs)
 
     return report

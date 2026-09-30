@@ -13,6 +13,7 @@ from .common import (
     summarise_timeseries,
     timeseries_to_dict,
 )
+from ..climate_change import apply_climate_change_factors
 from ..external_hydrographs import hydrograph_result_from_external
 from ..hydraulics.routing import basin_storage_m3_at_depth, route_through_basin
 from ..models.common import AEP, Coordinate, Project, ProjectSettings
@@ -147,14 +148,63 @@ def run_design_analysis(
             "project_name": request.project_name or "GAH-3D Basin Engine"
         },
     )
+    data_repo = DataRepository(use_live_data=request.use_live_data)
     report = run_full_pipeline(
         project=project,
-        data_repo=DataRepository(use_live_data=request.use_live_data),
+        data_repo=data_repo,
         aep_for_design=design_aep,
         pattern_rank=request.pattern_rank,
         climate_scenario=request.climate_scenario,
         climate_epoch=request.climate_epoch,
+        progress=progress,
     )
+
+    # Design rainfall depths and ARR temporal pattern metadata actually used,
+    # for inclusion in the generated report (re-fetched from the same cached
+    # DataRepository response, so this is cheap and consistent with `report`).
+    design_rainfalls_used: list[dict[str, Any]] = []
+    temporal_patterns_used: list[dict[str, Any]] = []
+    try:
+        baseline_rainfalls = data_repo.fetch_design_rainfalls(project)
+        adjusted_rainfalls = apply_climate_change_factors(
+            baseline_rainfalls,
+            request.climate_scenario,
+            request.climate_epoch,
+            arr_client=data_repo.arr_client if data_repo.use_live_data else None,
+            coordinate=project.coordinate,
+        )
+        design_rainfalls_used = sorted(
+            (
+                {
+                    "aep": item.aep.to_label(),
+                    "duration_minutes": item.duration_minutes,
+                    "depth_mm": round(item.depth_mm, 2),
+                    "intensity_mm_per_hr": round(item.intensity_mm_per_hr, 2),
+                }
+                for item in adjusted_rainfalls
+            ),
+            key=lambda row: (row["aep"], row["duration_minutes"]),
+        )
+        patterns_map = data_repo.fetch_temporal_patterns(project)
+        for (aep, duration), patterns_for_key in patterns_map.items():
+            for item in patterns_for_key:
+                temporal_patterns_used.append(
+                    {
+                        "aep": aep.to_label(),
+                        "duration_minutes": duration,
+                        "pattern_rank": item.pattern_rank,
+                        "event_id": item.metadata.get("event_id", "-"),
+                        "region": item.metadata.get("region", "-"),
+                        "source_aep_percent": item.metadata.get("source_aep_percent"),
+                    }
+                )
+        temporal_patterns_used.sort(
+            key=lambda row: (row["aep"], row["duration_minutes"], row["pattern_rank"])
+        )
+    except Exception:  # noqa: BLE001
+        # Reporting-only data; never fail the analysis if this can't be rebuilt.
+        design_rainfalls_used = []
+        temporal_patterns_used = []
 
     runoff_table = [
         {
@@ -388,6 +438,8 @@ def run_design_analysis(
         "basin_routing_cum_infil": dashboard_cumulative_infiltration,
         "hyetographs": hyetographs,
         "hydrographs": hydrographs,
+        "design_rainfalls_used": design_rainfalls_used,
+        "temporal_patterns_used": temporal_patterns_used,
         "warnings": warnings,
         "climate_scenario_label": (
             f"{request.climate_scenario} ({request.climate_epoch})"

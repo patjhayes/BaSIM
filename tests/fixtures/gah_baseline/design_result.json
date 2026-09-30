@@ -7,7 +7,7 @@
       "pattern_rank": 1,
       "peak_discharge_cms": 0.01233,
       "runoff_volume_m3": 9.495,
-      "time_to_peak_minutes": 10.0
+      "time_to_peak_minutes": 10
     },
     {
       "aep": "10%",
@@ -15,7 +15,7 @@
       "pattern_rank": 2,
       "peak_discharge_cms": 0.012427,
       "runoff_volume_m3": 9.495,
-      "time_to_peak_minutes": 10.0
+      "time_to_peak_minutes": 10
     },
     {
       "aep": "10%",
@@ -23,7 +23,7 @@
       "pattern_rank": 3,
       "peak_discharge_cms": 0.010049,
       "runoff_volume_m3": 9.495,
-      "time_to_peak_minutes": 15.0
+      "time_to_peak_minutes": 15
     },
     {
       "aep": "10%",
@@ -31,7 +31,7 @@
       "pattern_rank": 4,
       "peak_discharge_cms": 0.009307,
       "runoff_volume_m3": 9.495,
-      "time_to_peak_minutes": 15.0
+      "time_to_peak_minutes": 15
     },
     {
       "aep": "10%",
@@ -39,7 +39,7 @@
       "pattern_rank": 5,
       "peak_discharge_cms": 0.008704,
       "runoff_volume_m3": 9.495,
-      "time_to_peak_minutes": 15.0
+      "time_to_peak_minutes": 15
     },
     {
       "aep": "10%",
@@ -47,7 +47,7 @@
       "pattern_rank": 6,
       "peak_discharge_cms": 0.008663,
       "runoff_volume_m3": 9.495,
-      "time_to_peak_minutes": 20.0
+      "time_to_peak_minutes": 20
     },
     {
       "aep": "10%",
@@ -55,7 +55,7 @@
       "pattern_rank": 7,
       "peak_discharge_cms": 0.009281,
       "runoff_volume_m3": 9.495,
-      "time_to_peak_minutes": 15.0
+      "time_to_peak_minutes": 15
     },
     {
       "aep": "10%",
@@ -63,7 +63,7 @@
       "pattern_rank": 8,
       "peak_discharge_cms": 0.008338,
       "runoff_volume_m3": 9.495,
-      "time_to_peak_minutes": 20.0
+      "time_to_peak_minutes": 20
     },
     {
       "aep": "10%",
@@ -71,7 +71,7 @@
       "pattern_rank": 9,
       "peak_discharge_cms": 0.00799,
       "runoff_volume_m3": 9.495,
-      "time_to_peak_minutes": 15.0
+      "time_to_peak_minutes": 15
     },
     {
       "aep": "10%",
@@ -79,7 +79,7 @@
       "pattern_rank": 10,
       "peak_discharge_cms": 0.007011,
       "runoff_volume_m3": 9.495,
-      "time_to_peak_minutes": 20.0
+      "time_to_peak_minutes": 20
     }
   ],
   "basin_geometry": {
@@ -120,52 +120,52 @@
         "peak_mound_height_m": 0.0
       },
       "timeseries": {
-        "timestep_minutes": 5.0,
+        "timestep_minutes": 5,
         "time_minutes": [
-          0.0,
-          5.0,
-          10.0,
-          15.0,
-          20.0,
-          25.0,
-          30.0,
-          35.0,
-          40.0,
-          45.0,
-          50.0,
-          55.0,
-          60.0,
-          65.0,
-          70.0,
-          75.0,
-          80.0,
-          85.0,
-          90.0,
-          95.0,
-          100.0,
-          105.0,
-          110.0,
-          115.0,
-          120.0,
-          125.0,
-          130.0,
-          135.0,
-          140.0,
-          145.0,
-          150.0,
-          155.0,
-          160.0,
-          165.0,
-          170.0,
-          175.0,
-          180.0,
-          185.0,
-          190.0,
-          195.0,
-          200.0,
-          205.0,
-          210.0,
-          215.0
+          0,
+          5,
+          10,
+          15,
+          20,
+          25,
+          30,
+          35,
+          40,
+          45,
+          50,
+          55,
+          60,
+          65,
+          70,
+          75,
+          80,
+          85,
+          90,
+          95,
+          100,
+          105,
+          110,
+          115,
+          120,
+          125,
+          130,
+          135,
+          140,
+          145,
+          150,
+          155,
+          160,
+          165,
+          170,
+          175,
+          180,
+          185,
+          190,
+          195,
+          200,
+          205,
+          210,
+          215
         ],
         "cumulative_inflow_m3": [
           0.5875,
@@ -631,52 +631,52 @@
         "model_selection_reason": "GAH-3D routing with batters=4.0H:1V and GWD=3.0m."
       },
       "timeseries_drawdown": {
-        "timestep_minutes": 5.0,
+        "timestep_minutes": 5,
         "time_minutes": [
-          0.0,
-          5.0,
-          10.0,
-          15.0,
-          20.0,
-          25.0,
-          30.0,
-          35.0,
-          40.0,
-          45.0,
-          50.0,
-          55.0,
-          60.0,
-          65.0,
-          70.0,
-          75.0,
-          80.0,
-          85.0,
-          90.0,
-          95.0,
-          100.0,
-          105.0,
-          110.0,
-          115.0,
-          120.0,
-          125.0,
-          130.0,
-          135.0,
-          140.0,
-          145.0,
-          150.0,
-          155.0,
-          160.0,
-          165.0,
-          170.0,
-          175.0,
-          180.0,
-          185.0,
-          190.0,
-          195.0,
-          200.0,
-          205.0,
-          210.0,
-          215.0
+          0,
+          5,
+          10,
+          15,
+          20,
+          25,
+          30,
+          35,
+          40,
+          45,
+          50,
+          55,
+          60,
+          65,
+          70,
+          75,
+          80,
+          85,
+          90,
+          95,
+          100,
+          105,
+          110,
+          115,
+          120,
+          125,
+          130,
+          135,
+          140,
+          145,
+          150,
+          155,
+          160,
+          165,
+          170,
+          175,
+          180,
+          185,
+          190,
+          195,
+          200,
+          205,
+          210,
+          215
         ],
         "cumulative_inflow_m3": [
           0.6913,
@@ -1145,47 +1145,47 @@
   ],
   "basin_routing_times": {
     "30": [
-      0.0,
-      5.0,
-      10.0,
-      15.0,
-      20.0,
-      25.0,
-      30.0,
-      35.0,
-      40.0,
-      45.0,
-      50.0,
-      55.0,
-      60.0,
-      65.0,
-      70.0,
-      75.0,
-      80.0,
-      85.0,
-      90.0,
-      95.0,
-      100.0,
-      105.0,
-      110.0,
-      115.0,
-      120.0,
-      125.0,
-      130.0,
-      135.0,
-      140.0,
-      145.0,
-      150.0,
-      155.0,
-      160.0,
-      165.0,
-      170.0,
-      175.0,
-      180.0,
-      185.0,
-      190.0,
-      195.0,
-      200.0
+      0,
+      5,
+      10,
+      15,
+      20,
+      25,
+      30,
+      35,
+      40,
+      45,
+      50,
+      55,
+      60,
+      65,
+      70,
+      75,
+      80,
+      85,
+      90,
+      95,
+      100,
+      105,
+      110,
+      115,
+      120,
+      125,
+      130,
+      135,
+      140,
+      145,
+      150,
+      155,
+      160,
+      165,
+      170,
+      175,
+      180,
+      185,
+      190,
+      195,
+      200
     ]
   },
   "basin_routing_depths": {
@@ -3031,7 +3031,7 @@
   "hyetographs": [
     {
       "key": "10% 30min Rank 1",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "depths_mm": [
         7.4802,
         8.2199,
@@ -3043,7 +3043,7 @@
     },
     {
       "key": "10% 30min Rank 2",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "depths_mm": [
         4.2492,
         8.2843,
@@ -3055,7 +3055,7 @@
     },
     {
       "key": "10% 30min Rank 3",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "depths_mm": [
         2.4633,
         4.4124,
@@ -3067,7 +3067,7 @@
     },
     {
       "key": "10% 30min Rank 4",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "depths_mm": [
         3.641,
         4.0512,
@@ -3079,7 +3079,7 @@
     },
     {
       "key": "10% 30min Rank 5",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "depths_mm": [
         2.5428,
         3.5847,
@@ -3091,7 +3091,7 @@
     },
     {
       "key": "10% 30min Rank 6",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "depths_mm": [
         2.3055,
         2.9574,
@@ -3103,7 +3103,7 @@
     },
     {
       "key": "10% 30min Rank 7",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "depths_mm": [
         2.5363,
         3.0146,
@@ -3115,7 +3115,7 @@
     },
     {
       "key": "10% 30min Rank 8",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "depths_mm": [
         1.2707,
         3.1616,
@@ -3127,7 +3127,7 @@
     },
     {
       "key": "10% 30min Rank 9",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "depths_mm": [
         1.6826,
         3.0062,
@@ -3139,7 +3139,7 @@
     },
     {
       "key": "10% 30min Rank 10",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "depths_mm": [
         1.988,
         3.3678,
@@ -3153,7 +3153,7 @@
   "hydrographs": [
     {
       "key": "10% 30min Rank 1",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "discharge_cms": [
         0.00972,
         0.01233,
@@ -3167,7 +3167,7 @@
     },
     {
       "key": "10% 30min Rank 2",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "discharge_cms": [
         0.004874,
         0.012427,
@@ -3181,7 +3181,7 @@
     },
     {
       "key": "10% 30min Rank 3",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "discharge_cms": [
         0.002195,
         0.006619,
@@ -3195,7 +3195,7 @@
     },
     {
       "key": "10% 30min Rank 4",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "discharge_cms": [
         0.003961,
         0.006077,
@@ -3209,7 +3209,7 @@
     },
     {
       "key": "10% 30min Rank 5",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "discharge_cms": [
         0.002314,
         0.005377,
@@ -3223,7 +3223,7 @@
     },
     {
       "key": "10% 30min Rank 6",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "discharge_cms": [
         0.001958,
         0.004436,
@@ -3237,7 +3237,7 @@
     },
     {
       "key": "10% 30min Rank 7",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "discharge_cms": [
         0.002304,
         0.004522,
@@ -3251,7 +3251,7 @@
     },
     {
       "key": "10% 30min Rank 8",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "discharge_cms": [
         0.000406,
         0.004742,
@@ -3265,7 +3265,7 @@
     },
     {
       "key": "10% 30min Rank 9",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "discharge_cms": [
         0.001024,
         0.004509,
@@ -3279,7 +3279,7 @@
     },
     {
       "key": "10% 30min Rank 10",
-      "timestep_minutes": 5.0,
+      "timestep_minutes": 5,
       "discharge_cms": [
         0.001482,
         0.005052,
@@ -3290,6 +3290,96 @@
         0.0,
         0.0
       ]
+    }
+  ],
+  "design_rainfalls_used": [
+    {
+      "aep": "10%",
+      "duration_minutes": 30,
+      "depth_mm": 22.1,
+      "intensity_mm_per_hr": 44.2
+    }
+  ],
+  "temporal_patterns_used": [
+    {
+      "aep": "10%",
+      "duration_minutes": 30,
+      "pattern_rank": 1,
+      "event_id": "-",
+      "region": "-",
+      "source_aep_percent": null
+    },
+    {
+      "aep": "10%",
+      "duration_minutes": 30,
+      "pattern_rank": 2,
+      "event_id": "-",
+      "region": "-",
+      "source_aep_percent": null
+    },
+    {
+      "aep": "10%",
+      "duration_minutes": 30,
+      "pattern_rank": 3,
+      "event_id": "-",
+      "region": "-",
+      "source_aep_percent": null
+    },
+    {
+      "aep": "10%",
+      "duration_minutes": 30,
+      "pattern_rank": 4,
+      "event_id": "-",
+      "region": "-",
+      "source_aep_percent": null
+    },
+    {
+      "aep": "10%",
+      "duration_minutes": 30,
+      "pattern_rank": 5,
+      "event_id": "-",
+      "region": "-",
+      "source_aep_percent": null
+    },
+    {
+      "aep": "10%",
+      "duration_minutes": 30,
+      "pattern_rank": 6,
+      "event_id": "-",
+      "region": "-",
+      "source_aep_percent": null
+    },
+    {
+      "aep": "10%",
+      "duration_minutes": 30,
+      "pattern_rank": 7,
+      "event_id": "-",
+      "region": "-",
+      "source_aep_percent": null
+    },
+    {
+      "aep": "10%",
+      "duration_minutes": 30,
+      "pattern_rank": 8,
+      "event_id": "-",
+      "region": "-",
+      "source_aep_percent": null
+    },
+    {
+      "aep": "10%",
+      "duration_minutes": 30,
+      "pattern_rank": 9,
+      "event_id": "-",
+      "region": "-",
+      "source_aep_percent": null
+    },
+    {
+      "aep": "10%",
+      "duration_minutes": 30,
+      "pattern_rank": 10,
+      "event_id": "-",
+      "region": "-",
+      "source_aep_percent": null
     }
   ],
   "warnings": [],
