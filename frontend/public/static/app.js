@@ -350,43 +350,21 @@
       const requestId = ++soilInfoRequestId;
       if (soilInfoRequest) soilInfoRequest.abort();
       soilTypeOutput.textContent = "Checking selected location…";
-
-      const size = map.getSize();
-      const point = map.latLngToContainerPoint(latlng);
-      const northWest = map.options.crs.project(map.getBounds().getNorthWest());
-      const southEast = map.options.crs.project(map.getBounds().getSouthEast());
-      const params = {
-        service: "WMS",
-        version: "1.3.0",
-        request: "GetFeatureInfo",
-        layers: "0",
-        query_layers: "0",
-        styles: "",
-        format: "image/png",
-        transparent: true,
-        crs: "EPSG:3857",
-        bbox: `${northWest.x},${southEast.y},${southEast.x},${northWest.y}`,
-        width: size.x,
-        height: size.y,
-        i: Math.round(point.x),
-        j: Math.round(point.y),
-        info_format: "application/geo+json",
-        feature_count: 1,
-      };
       soilInfoRequest = new AbortController();
 
       try {
-        const response = await fetch(
-          `${L.Util.getParamString(params, soilWmsUrl)}`,
-          { signal: soilInfoRequest.signal },
-        );
+        const params = new URLSearchParams({
+          lat: String(latlng.lat),
+          lng: String(latlng.lng),
+        });
+        const response = await fetch(apiUrl(`/api/soil-type?${params}`), {
+          signal: soilInfoRequest.signal,
+        });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         if (requestId !== soilInfoRequestId) return;
 
-        const properties = data.features?.[0]?.properties;
-        soilTypeOutput.textContent =
-          properties?.["Decoded WA Soil Group description"] || "No WA soil group mapped at this location.";
+        soilTypeOutput.textContent = data.soil_type || "No WA soil group mapped at this location.";
       } catch (err) {
         if (err.name !== "AbortError" && requestId === soilInfoRequestId) {
           soilTypeOutput.textContent = "Unable to retrieve soil type. Click the map to try again.";
