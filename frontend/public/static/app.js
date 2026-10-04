@@ -307,8 +307,10 @@
     // WA soil-landscape mapping (WA Soil Group), Dept. of Primary Industries and
     // Regional Development (DPIRD-076), served via the SLIP public WMS.
     // https://catalogue.data.wa.gov.au/dataset/soil-landscape-mapping-western-australia-attributed-by-wa-soil-group
+    const soilWmsUrl =
+      "https://public-services.slip.wa.gov.au/public/services/SLIP_Public_Services/Soil_Landscape/MapServer/WMSServer";
     const soilLayer = L.tileLayer.wms(
-      "https://public-services.slip.wa.gov.au/public/services/SLIP_Public_Services/Soil_Landscape/MapServer/WMSServer",
+      soilWmsUrl,
       {
         layers: "0",
         format: "image/png",
@@ -332,11 +334,93 @@
     });
     map.addControl(new SoilLayerToggle());
 
+    let soilInfoTimer = null;
+    let soilInfoRequest = null;
+    let soilInfoRequestId = 0;
+    const soilInfoTooltip = L.tooltip({ direction: "top", offset: L.point(0, -10) });
+
+    function clearSoilInfoTooltip() {
+      soilInfoRequestId += 1;
+      clearTimeout(soilInfoTimer);
+      if (soilInfoRequest) {
+        soilInfoRequest.abort();
+        soilInfoRequest = null;
+      }
+      map.closeTooltip(soilInfoTooltip);
+    }
+
+    map.on("mousemove", (e) => {
+      if (!map.hasLayer(soilLayer)) return;
+
+      const requestId = ++soilInfoRequestId;
+      clearTimeout(soilInfoTimer);
+      if (soilInfoRequest) {
+        soilInfoRequest.abort();
+        soilInfoRequest = null;
+      }
+      map.closeTooltip(soilInfoTooltip);
+
+      soilInfoTimer = setTimeout(async () => {
+        const size = map.getSize();
+        const point = map.latLngToContainerPoint(e.latlng);
+        const northWest = map.options.crs.project(map.getBounds().getNorthWest());
+        const southEast = map.options.crs.project(map.getBounds().getSouthEast());
+        const params = {
+          service: "WMS",
+          version: "1.3.0",
+          request: "GetFeatureInfo",
+          layers: "0",
+          query_layers: "0",
+          styles: "",
+          format: "image/png",
+          transparent: true,
+          crs: "EPSG:3857",
+          bbox: `${northWest.x},${southEast.y},${southEast.x},${northWest.y}`,
+          width: size.x,
+          height: size.y,
+          i: Math.round(point.x),
+          j: Math.round(point.y),
+          info_format: "application/geo+json",
+          feature_count: 1,
+        };
+        soilInfoRequest = new AbortController();
+
+        try {
+          const response = await fetch(
+            `${L.Util.getParamString(params, soilWmsUrl)}`,
+            { signal: soilInfoRequest.signal },
+          );
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          if (requestId !== soilInfoRequestId || !map.hasLayer(soilLayer)) return;
+
+          const properties = data.features?.[0]?.properties;
+          const soilType = properties?.["Decoded WA Soil Group description"];
+          if (!soilType) {
+            map.closeTooltip(soilInfoTooltip);
+            return;
+          }
+
+          const tooltipContent = document.createElement("span");
+          tooltipContent.textContent = `WA soil type: ${soilType}`;
+          soilInfoTooltip.setLatLng(e.latlng).setContent(tooltipContent).openOn(map);
+        } catch (err) {
+          if (err.name !== "AbortError") {
+            console.warn("Failed to load WA soil type for map tooltip", err);
+          }
+        } finally {
+          if (requestId === soilInfoRequestId) soilInfoRequest = null;
+        }
+      }, 150);
+    });
+    map.on("mouseout", clearSoilInfoTooltip);
+
     document.getElementById("inp-soil-layer-toggle").addEventListener("change", (e) => {
       if (e.target.checked) {
         soilLayer.addTo(map);
       } else {
         map.removeLayer(soilLayer);
+        clearSoilInfoTooltip();
       }
     });
 
