@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from functools import lru_cache
 import logging
 from typing import Any, Optional
@@ -29,6 +30,8 @@ LOGGER = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analyses", tags=["analyses"])
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_UPLOAD_FILES = 20
+FREE_ACCESS_START = datetime(2026, 11, 18, 2, 54, tzinfo=timezone.utc)
+FREE_ACCESS_END = datetime(2026, 12, 18, 2, 54, tzinfo=timezone.utc)
 
 
 @lru_cache(maxsize=1)
@@ -37,6 +40,8 @@ def job_store_dependency() -> JobStore:
 
 
 def _is_free_tier(email: str) -> bool:
+    if FREE_ACCESS_START <= datetime.now(timezone.utc) < FREE_ACCESS_END:
+        return True
     normalized = email.strip().lower()
     return normalized.endswith(".gov.au") or normalized.endswith(
         "@innealta.com.au"

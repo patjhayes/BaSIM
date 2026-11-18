@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
@@ -41,6 +42,48 @@ class SubmissionStore:
         self.events.append(event)
 
 
+def set_current_time(monkeypatch, now: datetime) -> None:
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = now
+    monkeypatch.setattr(analyses, "datetime", clock)
+
+
+@pytest.mark.parametrize(
+    ("now", "email", "expected"),
+    [
+        (analyses.FREE_ACCESS_START - timedelta(microseconds=1), "user@example.com", False),
+        (analyses.FREE_ACCESS_START, "user@example.com", True),
+        (analyses.FREE_ACCESS_END - timedelta(microseconds=1), "user@example.com", True),
+        (analyses.FREE_ACCESS_END, "user@example.com", False),
+        (analyses.FREE_ACCESS_END, "engineer@agency.gov.au", True),
+        (analyses.FREE_ACCESS_END, "engineer@innealta.com.au", True),
+    ],
+)
+def test_temporary_free_access_boundaries(monkeypatch, now, email, expected) -> None:
+    set_current_time(monkeypatch, now)
+    assert analyses._is_free_tier(email) is expected
+
+
+def test_temporary_free_access_bypasses_billing_for_commercial_user(monkeypatch) -> None:
+    set_current_time(monkeypatch, analyses.FREE_ACCESS_START)
+    store = SubmissionStore()
+    debit = Mock()
+    monkeypatch.setattr(analyses, "debit_analysis_credit", debit)
+    monkeypatch.setattr(analyses.celery_app, "send_task", Mock())
+
+    response = analyses.submit_analysis_job(
+        analysis_type="clogging",
+        payload={},
+        project_code=None,
+        user={"id": "user-2", "email": "engineer@example.com"},
+        store=store,
+    )
+
+    assert response.cost == 0
+    assert store.created["cost"] == 0
+    debit.assert_not_called()
+
+
 def test_free_tier_job_bypasses_billing(monkeypatch) -> None:
     store = SubmissionStore()
     debit = Mock()
@@ -67,6 +110,7 @@ def test_free_tier_job_bypasses_billing(monkeypatch) -> None:
 
 
 def test_commercial_job_debits_one_credit(monkeypatch) -> None:
+    set_current_time(monkeypatch, analyses.FREE_ACCESS_END)
     store = SubmissionStore()
     debit = Mock(return_value=9)
     monkeypatch.setattr(analyses, "debit_analysis_credit", debit)
@@ -95,6 +139,7 @@ def test_commercial_job_debits_one_credit(monkeypatch) -> None:
 
 
 def test_enqueue_failure_marks_failed_and_refunds(monkeypatch) -> None:
+    set_current_time(monkeypatch, analyses.FREE_ACCESS_END)
     store = SubmissionStore()
     refund = Mock(return_value=10)
     monkeypatch.setattr(analyses, "debit_analysis_credit", Mock(return_value=9))

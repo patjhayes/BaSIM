@@ -73,7 +73,9 @@ All analysis and job routes require a Supabase bearer token.
 - `POST /api/jobs/{job_id}/cancel`
 
 Each design or clogging submission costs one credit for commercial accounts.
-Addresses ending in `.gov.au` or `@innealta.com.au` use the free tier. Failed,
+All authenticated users receive free submissions from 18 November 2026 at
+10:54 until 18 December 2026 at 10:54 (UTC+8). Outside that period, addresses
+ending in `.gov.au` or `@innealta.com.au` use the free tier. Failed,
 cancelled, or broker-rejected paid jobs use the idempotent refund function.
 
 ## Tests
