@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/analyses", tags=["analyses"])
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_UPLOAD_FILES = 20
 FREE_ACCESS_START = datetime(2026, 11, 18, 2, 54, tzinfo=timezone.utc)
-FREE_ACCESS_END = datetime(2026, 12, 18, 2, 54, tzinfo=timezone.utc)
+FREE_ACCESS_END = datetime(2026, 12, 31, 16, 0, tzinfo=timezone.utc)
 
 
 @lru_cache(maxsize=1)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
 import pytest
@@ -53,6 +53,9 @@ def set_current_time(monkeypatch, now: datetime) -> None:
     [
         (analyses.FREE_ACCESS_START - timedelta(microseconds=1), "user@example.com", False),
         (analyses.FREE_ACCESS_START, "user@example.com", True),
+        (datetime(2026, 12, 18, 2, 54, tzinfo=timezone.utc), "user@example.com", True),
+        (datetime(2026, 12, 31, 15, 59, 59, tzinfo=timezone.utc), "user@example.com", True),
+        (datetime(2026, 12, 31, 16, 0, tzinfo=timezone.utc), "user@example.com", False),
         (analyses.FREE_ACCESS_END - timedelta(microseconds=1), "user@example.com", True),
         (analyses.FREE_ACCESS_END, "user@example.com", False),
         (analyses.FREE_ACCESS_END, "engineer@agency.gov.au", True),
