@@ -3,8 +3,10 @@
 VERSION CONTROL
 ================================================================================
 File: gah_3d_engine.py
-Version: 1.3.0
-Date: 2026-07-01
+Version: 1.3.1
+Date: 2026-10-27
+v1.3.1: Green-Ampt ponding head fixed to (psi + h)*dtheta/F (was
+        psi*dtheta + h, which overstated the head boost by 1/dtheta).
 Description: BaSIM Engine — Infiltration Routing + Hydraulic Structures
 
 Built on the validated GAH-3D engine (phase 7 v1.2.0, phase 4 mechanics):
@@ -164,13 +166,13 @@ class GAH3D_Basin:
             fp = self.Ks * (L + h - self.H_m) / L
             fp = max(0.0, fp)
         else:
-            # Unsaturated Green-Ampt. Phase 4 uses fp = Ks*(1 + psi*dtheta/F)
-            # WITHOUT the ponding head; we add h to the capillary-drive term
-            # (standard GA form) as a documented, legitimate improvement.
+            # Unsaturated Green-Ampt with ponding head: the suction (psi) and
+            # ponded depth (h) both act over the moisture deficit, so
+            # fp = Ks*(1 + (psi + h)*dtheta/F).
             if F_old <= 1e-10:
                 fp = 1.0e9       # infinite initial suction (phase 4: fp = 1000)
             else:
-                fp = self.Ks * (1.0 + (self.psi * dtheta + h) / F_old)
+                fp = self.Ks * (1.0 + (self.psi + h) * dtheta / F_old)
         f_potential = fp
 
         # Clogged-layer cap (Darcy through the clogging skin; with batters the
@@ -240,13 +242,13 @@ class GAH3D_Basin:
             fp = self.Ks * (L + h - self.H_m) / L
             fp = max(0.0, fp)
         else:
-            # Unsaturated Green-Ampt. Phase 4 uses fp = Ks*(1 + psi*dtheta/F)
-            # WITHOUT the ponding head; we add h to the capillary-drive term
-            # (standard GA form) as a documented, legitimate improvement.
+            # Unsaturated Green-Ampt with ponding head: the suction (psi) and
+            # ponded depth (h) both act over the moisture deficit, so
+            # fp = Ks*(1 + (psi + h)*dtheta/F).
             if F_old <= 1e-10:
                 fp = 1.0e9       # infinite initial suction (phase 4: fp = 1000)
             else:
-                fp = self.Ks * (1.0 + (self.psi * dtheta + h) / F_old)
+                fp = self.Ks * (1.0 + (self.psi + h) * dtheta / F_old)
         f_potential = fp
 
         # Clogged-layer cap (Darcy through the clogging skin; with batters the

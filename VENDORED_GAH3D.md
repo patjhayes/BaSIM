@@ -27,17 +27,26 @@ The basin routing loop was extracted to
 `src/soakhydro/hydraulics/routing.py`. Synchronous framework-neutral design
 and clogging orchestration lives under `src/soakhydro/application`.
 
-## Parity Verification
+## Divergence From Pinned Source
+
+`src/soakhydro/hydraulics/gah_3d_engine.py` (v1.3.1) corrects the Green-Ampt
+ponding head to `Ks * (1 + (psi + h) * dtheta / F)`. The pinned commit used
+`psi * dtheta + h`, which overstated the ponding-head contribution by a factor
+of `1/dtheta`. The
+fixtures under `tests/fixtures/gah_baseline` were regenerated from the BaSIM
+engine, so they no longer match the pinned upstream output.
+`scripts/capture_gah_baseline.py` reproduces the old behaviour when run
+against the pinned upstream commit.
+
+## Regression Verification
 
 Canonical offline request and result fixtures are stored under
-`tests/fixtures/gah_baseline`. They can be regenerated from a checkout of the
-pinned source with:
+`tests/fixtures/gah_baseline`. The results reflect the BaSIM engine correction
+described above and are regression baselines, not parity evidence for the
+pinned source. Do not overwrite them with `scripts/capture_gah_baseline.py`
+against the uncorrected pinned source.
 
-```powershell
-python scripts/capture_gah_baseline.py --gah-source <path-to-GAH-3D>
-```
-
-Run the migrated numerical and application parity suite with:
+Run the numerical and application regression suite with:
 
 ```powershell
 $env:PYTHONPATH = "$PWD/src"

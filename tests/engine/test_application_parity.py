@@ -21,13 +21,13 @@ def _json_normalize(payload: dict) -> dict:
     return json.loads(json.dumps(payload))
 
 
-def test_design_result_matches_pinned_gah_source() -> None:
+def test_design_result_matches_basim_baseline() -> None:
     actual = run_design_analysis(_fixture("design_request.json"))
 
     assert _json_normalize(actual) == _fixture("design_result.json")
 
 
-def test_clogging_result_matches_pinned_gah_source() -> None:
+def test_clogging_result_matches_basim_baseline() -> None:
     actual = run_clogging_analysis(_fixture("clogging_request.json"))
 
     assert _json_normalize(actual) == _fixture("clogging_result.json")

@@ -5,23 +5,23 @@
     "hydrographs": 10,
     "depth_summary": {
       "critical_duration_minutes": 30,
-      "critical_pattern_rank": 6,
-      "peak_depth_m": 0.1431,
-      "max_storage_m3": 6.8488,
-      "total_infiltration_m3": 9.4952,
+      "critical_pattern_rank": 8,
+      "peak_depth_m": 0.1548,
+      "max_storage_m3": 7.5176,
+      "total_infiltration_m3": 9.4953,
       "total_overflow_m3": 0.0,
-      "drain_time_hours": 2.92,
+      "drain_time_hours": 4.08,
       "spilled": false,
       "peak_mound_height_m": 0.0
     },
     "drawdown_summary": {
       "critical_duration_minutes": 30,
       "critical_pattern_rank": 7,
-      "peak_depth_m": 0.1421,
-      "max_storage_m3": 6.7952,
+      "peak_depth_m": 0.1545,
+      "max_storage_m3": 7.5,
       "total_infiltration_m3": 9.4951,
       "total_overflow_m3": 0.0,
-      "drain_time_hours": 2.92,
+      "drain_time_hours": 4.08,
       "spilled": false,
       "peak_mound_height_m": 0.0
     },
@@ -33,28 +33,28 @@
         "year": 0,
         "k_cl_m_per_day": 1.2,
         "l_cl_m": 0.001,
-        "peak_depth_m": 0.1983,
-        "drain_time_hours": 5.5,
+        "peak_depth_m": 0.2381,
+        "drain_time_hours": 7.33,
         "spilled": false,
         "depth_summary": {
           "critical_duration_minutes": 540,
           "critical_pattern_rank": 3,
-          "peak_depth_m": 0.1983,
-          "max_storage_m3": 10.1458,
-          "total_infiltration_m3": 27.6322,
+          "peak_depth_m": 0.2381,
+          "max_storage_m3": 12.7623,
+          "total_infiltration_m3": 27.6331,
           "total_overflow_m3": 0.0,
-          "drain_time_hours": 4.0,
+          "drain_time_hours": 6.5,
           "spilled": false,
           "peak_mound_height_m": 0.0
         },
         "drawdown_summary": {
-          "critical_duration_minutes": 540,
-          "critical_pattern_rank": 10,
-          "peak_depth_m": 0.1999,
-          "max_storage_m3": 10.2452,
-          "total_infiltration_m3": 27.6473,
+          "critical_duration_minutes": 360,
+          "critical_pattern_rank": 8,
+          "peak_depth_m": 0.2294,
+          "max_storage_m3": 12.1723,
+          "total_infiltration_m3": 23.8065,
           "total_overflow_m3": 0.0,
-          "drain_time_hours": 5.5,
+          "drain_time_hours": 7.33,
           "spilled": false,
           "peak_mound_height_m": 0.0
         }
@@ -90,5 +90,6 @@
         }
       }
     ]
-  }
+  },
+  "engine_revision": "gah_3d_engine v1.3.1: Green-Ampt head (psi + h)*dtheta/F applied on top of the pinned commit"
 }

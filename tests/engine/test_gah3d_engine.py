@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import pytest
 
 from soakhydro.hydraulics.gah_3d_engine import GAH3D_Basin
 
@@ -44,6 +45,22 @@ def test_green_ampt_flux_is_at_least_ks():
     # Early time: deep front, large capillary pull -> f >> Ks
     f = basin.predict_potential_infil(dt=60.0, current_ponding_depth=0.5)
     assert f >= basin.Ks - 1e-15
+
+
+@pytest.mark.parametrize("h", [0.0, 0.5])
+@pytest.mark.parametrize("method", ["predict_potential_infil", "step"])
+def test_green_ampt_head_is_psi_plus_h_times_dtheta_over_f(h, method):
+    dtheta, F = 0.2, 0.05
+    basin = _make_basin(theta_deficit=dtheta)
+    basin.F = F
+    expected = basin.Ks * (1.0 + (basin.psi + h) / (F / dtheta))
+
+    if method == "predict_potential_infil":
+        f = basin.predict_potential_infil(dt=60.0, current_ponding_depth=h)
+    else:
+        f = basin.step(dt=60.0, current_ponding_depth=h, available_water_depth=1.0)
+
+    assert math.isclose(f, expected, rel_tol=1e-12)
 
 
 def test_recharge_mass_is_conserved():
